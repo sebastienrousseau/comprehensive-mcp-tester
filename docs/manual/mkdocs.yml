@@ -76,5 +76,7 @@ nav:
       - Packaging: docs/packaging.md
       - Release highlights: docs/releases/README.md
       - Repository standard: docs/STANDARDS.md
+  - Getting help: SUPPORT.md
   - Security: SECURITY.md
+  - Governance: GOVERNANCE.md
   - Code of conduct: CODE_OF_CONDUCT.md
