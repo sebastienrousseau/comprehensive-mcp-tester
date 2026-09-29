@@ -13,9 +13,9 @@
  * for a different version. The README's "currently X.Y.Z" is checked by
  * check-readme.mjs.
  */
-import { readFileSync, realpathSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { isMain } from './is-main.mjs';
 
 /** Every version reference, as [where, version or null] */
 function references(root) {
@@ -60,5 +60,4 @@ function main(argv) {
   }
 }
 
-// Real paths on both sides: a symlinked checkout must not turn the check into a silent pass
-if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) main(process.argv.slice(2));
+if (isMain(import.meta.url)) main(process.argv.slice(2));
