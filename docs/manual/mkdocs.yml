@@ -53,6 +53,7 @@ validation:
 
 not_in_nav: |
   docs/assets/LOGO.md
+  docs/releases/v*.md
 
 nav:
   - Overview: README.md
@@ -72,6 +73,7 @@ nav:
       - Contributing: CONTRIBUTING.md
       - Acceptance criteria: docs/acceptance/README.md
       - Policies: docs/POLICIES.md
+      - Release highlights: docs/releases/README.md
       - Repository standard: docs/STANDARDS.md
   - Security: SECURITY.md
   - Code of conduct: CODE_OF_CONDUCT.md
