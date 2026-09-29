@@ -8,6 +8,7 @@ Releases start at 0.0.1 and each one increments the version by exactly 0.0.1 ([p
 
 ### Added
 
+- A Content-Security-Policy on the page from both hosts: requests only to its own origin, no framing, no rebasing or posting forms elsewhere ([#41](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/41)).
 - CodeQL, OpenSSF Scorecard, dependency review, `npm audit` and registry-signature checks in CI, with every GitHub Action pinned by commit; a devcontainer checked in CI to boot to a green test suite; a pre-commit configuration; `AGENTS.md` (which `CLAUDE.md` now imports), `GOVERNANCE.md`, `SUPPORT.md` and `CITATION.cff`. Releases also ship their Sigstore provenance bundle ([#56](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/56)).
 - `docs/packaging.md` for anyone repackaging the tool, and a CI check that the build is reproducible: the same commit gives byte-identical files ([#55](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/55)).
 - A release pipeline: each signed `v*` tag publishes a GitHub release with the built files, a CycloneDX SBOM, `SHA256SUMS`, and Sigstore-signed build provenance, after a preflight on the tag and every version reference, and reads the published release back ([#54](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/54)).
@@ -27,6 +28,8 @@ Releases start at 0.0.1 and each one increments the version by exactly 0.0.1 ([p
 
 ### Fixed
 
+- The trace, README and link checks, the build and the mock server silently exited 0 without doing anything when run from a path that goes through a symlink; a check could pass without having run ([#62](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/62)).
+- The request Log kept every entry, so a health monitor left running grew memory and re-render cost without bound; it now keeps the newest 1000 ([#40](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/40)).
 - With pop-ups blocked, sign-in saved a client secret, if one was entered, in `sessionStorage` across the redirect. It is no longer saved; a sign-in that needs it asks for it again on return ([#42](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/42)).
 - The local server silently exited without starting when run from a path that goes through a symlink (for example macOS's `/tmp` or a Homebrew prefix), and with `PORT=0` it announced port 0 instead of the port it bound.
 - `package-lock.json` recorded the project as version 0.8.0 while `package.json` said 0.10.0; the two now always agree, and CI checks it.
