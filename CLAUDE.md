@@ -12,7 +12,7 @@ A browser-based MCP (Model Context Protocol) client for testing and diagnosing M
 npm install
 npm test          # all suites, ~10s. Run before every commit.
 npm run test:trace # every AC in docs/acceptance/ has a test titled with its ID, and vice versa
-make check        # test + trace + readme + links + build: the offline CI gate
+make check        # test + trace + readme + links + versions + build: the offline CI gate
 make docs         # user manual (pip install --require-hashes -r docs/manual/requirements.txt first)
 npm run build     # dist/index.html, dist/worker.js (paste into Cloudflare), dist/worker.mjs (wrangler)
 npm start         # local server on http://127.0.0.1:8787

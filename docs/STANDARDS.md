@@ -17,10 +17,10 @@ The standard is applied in six phases, one per release. This page records where 
 | 1 | Identity and README | 3 | 6 | Licence [#51](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/51); CI-checked install snippets |
 | 2 | Documentation | 2 | 8 | External links not checked; migration guides not applicable |
 | 3 | Build and install UX | 4 | 7 | Install snippets exercised in CI; manpages not applicable |
-| 4 | Releases | 1 | 2 | Signed, automated releases with checksums, SBOM, provenance [#54](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/54) |
+| 4 | Releases | 1 | 8 | First release not yet published; no native binaries (roadmap 7) |
 | 5 | Packaging and distribution | 1 | 1 | Packaging notes, container image [#55](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/55), [#23](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/23) |
 | 6 | CI quality gates | 5 | 5 | JavaScript lint and complexity gate [#43](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/43); e2e reports [#6](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/6) |
-| 7 | Supply chain and security | 1 | 4 | Pinned actions, Scorecard, audit in CI [#56](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/56) |
+| 7 | Supply chain and security | 1 | 6 | Pinned actions, Scorecard, audit in CI [#56](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/56) |
 | 8 | Community and governance | 2 | 5 | Governance, support, citation, devcontainer [#56](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/56) |
 
 ## Evidence by category
@@ -60,12 +60,15 @@ The standard is applied in six phases, one per release. This page records where 
 
 ### 4. Releases
 
-- **Has:** `CHANGELOG.md`, and CI uploads `dist/` on every run.
+- **Has:**
+  - `CHANGELOG.md`, and a release procedure in `DEVELOPMENT.md`.
+  - A tag-triggered release workflow with a dry run that runs on every change to the release machinery.
+  - A blocking preflight: the tag must be annotated, signed and verified, carry the message `MCP Tester vX.Y.Z`, point at `main`, and match every version reference and the changelog.
+  - `SHA256SUMS`, a CycloneDX SBOM, and Sigstore-signed build provenance and SBOM attestations for every file.
+  - Release notes in a fixed layout, and an audit that reads the published release back.
 - **Missing:**
-  - Tags: 0.8.0 to 0.10.0 were never tagged.
-  - GitHub releases.
-  - A tag-triggered pipeline with a dry run.
-  - Checksums, an SBOM and provenance (#54).
+  - A published release: 0.8.0 to 0.10.0 were never tagged, and 0.10.1 will be the first.
+  - Native binaries, which are roadmap item 7 (#26).
 
 ### 5. Packaging and distribution
 
@@ -92,6 +95,8 @@ The standard is applied in six phases, one per release. This page records where 
 
 - **Has:**
   - `SECURITY.md` with GitHub private vulnerability reporting.
+  - Release files with a CycloneDX SBOM and Sigstore-signed build provenance, verifiable with `gh attestation verify`.
+  - The manual's Python tooling pinned by hash.
   - Dependabot for npm and GitHub Actions.
   - The lockfile committed and `npm ci` in CI.
   - No runtime dependencies.
@@ -100,7 +105,7 @@ The standard is applied in six phases, one per release. This page records where 
   - An OpenSSF Scorecard run.
   - `npm audit` in CI.
   - REUSE / SPDX headers, which wait for the licence (#56, #51).
-- **Not applicable yet:** signing keys (`KEYS.asc`), until releases are signed (#54).
+- **Not applicable:** `KEYS.asc`. Tags are signed with the maintainer's SSH key, which GitHub verifies against the key registered on their account, and release files carry Sigstore attestations instead of key signatures.
 
 ### 8. Community and governance
 
@@ -119,6 +124,6 @@ The standard is applied in six phases, one per release. This page records where 
 | 1 | Normalised layout: `docs/` root, `DEVELOPMENT.md`, community files, docs-lint CI | This change | Done |
 | 2 | Makefile and install UX | [#52](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/52) | Done |
 | 3 | Rendered manual and link check | [#53](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/53) | Done |
-| 4 | Automated, signed releases | [#54](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/54) | Open |
+| 4 | Automated, signed releases | [#54](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/54) | Done |
 | 5 | Packaging | [#55](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/55) | Open |
 | 6 | Polish: Scorecard, pinned actions, devcontainer, governance files | [#56](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/56) | Open |
