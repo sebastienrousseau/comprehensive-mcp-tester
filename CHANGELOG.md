@@ -8,6 +8,7 @@ Releases start at 0.0.1 and each one increments the version by exactly 0.0.1 ([p
 
 ### Added
 
+- `docs/packaging.md` for anyone repackaging the tool, and a CI check that the build is reproducible: the same commit gives byte-identical files ([#55](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/55)).
 - A release pipeline: each signed `v*` tag publishes a GitHub release with the built files, a CycloneDX SBOM, `SHA256SUMS`, and Sigstore-signed build provenance, after a preflight on the tag and every version reference, and reads the published release back ([#54](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/54)).
 - A user manual built from the repository's Markdown and published to GitHub Pages on each release, architecture decision records in `docs/adr/`, and a CI check that every relative link and anchor resolves ([#53](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/53)).
 - A `Makefile`: `make check` runs the offline CI gate, and `make install` / `make uninstall` install the local server as an `mcp-tester` command, honouring `PREFIX` and `DESTDIR` ([#52](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/52)).
