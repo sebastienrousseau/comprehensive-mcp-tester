@@ -27,6 +27,7 @@ Releases start at 0.0.1 and each one increments the version by exactly 0.0.1 ([p
 
 ### Fixed
 
+- With pop-ups blocked, sign-in saved a client secret, if one was entered, in `sessionStorage` across the redirect. It is no longer saved; a sign-in that needs it asks for it again on return ([#42](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/42)).
 - The local server silently exited without starting when run from a path that goes through a symlink (for example macOS's `/tmp` or a Homebrew prefix), and with `PORT=0` it announced port 0 instead of the port it bound.
 - `package-lock.json` recorded the project as version 0.8.0 while `package.json` said 0.10.0; the two now always agree, and CI checks it.
 - A late response from a previous connection no longer overwrites the current server's tools, session, auth challenge or diagnostics, and a disconnect drops in-flight work ([#39](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/39)).
