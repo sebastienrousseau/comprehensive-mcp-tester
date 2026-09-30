@@ -28,6 +28,7 @@ Releases start at 0.0.1 and each one increments the version by exactly 0.0.1 ([p
 - **Version numbering restarts at 0.0.1.** Nothing was ever released under 0.8.0 to 0.10.0, so the first release is 0.0.1 under the versioning policy; until then the version reads 0.0.0.
 - **Node.js 22 or later is now required** (was 20). Node 20 reached end of life on 2026-04-30; CI now tests Node 22 and 24 ([#58](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/58)).
 - README restructured into the standard layout; the roadmap moved to `ROADMAP.md`.
+- The proxy core (`proxyMcp`) is split into small steps with their own tests: target validation, outgoing headers, one attempt, the retry loop and the two envelopes. Behaviour and the `/proxy` envelope are unchanged, and `proxyMcp` leaves the complexity baseline ([#82](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/82)).
 
 ### Fixed
 

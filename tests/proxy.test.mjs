@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { proxyMcp, parseAllowedOrigins, clampInt } from '../src/core/proxy.js';
+import { proxyMcp, parseAllowedOrigins, clampInt, validateTarget, buildOutHeaders, runAttempts, attemptOnce } from '../src/core/proxy.js';
 import { startMockServer } from './fixtures/mock-mcp-server.mjs';
 
 let mock;
@@ -135,4 +135,86 @@ test('purpose "oauth": no MCP Accept or Content-Type repair; defaults to Accept:
   assert.equal(seen[1].get('accept'), 'application/json');
   await proxyMcp({ url: 'https://mcp.example/mcp', method: 'POST', body: '{}' }, { fetch: fakeFetch });
   assert.equal(seen[2].get('accept'), 'application/json, text/event-stream', 'MCP requests are still repaired');
+});
+
+// ── The envelope contract, pinned before the pipeline split (#82) ─────────
+
+const keys = (o) => Object.keys(o).sort();
+const DIAG_KEYS = ['attemptLog', 'attempts', 'bodyMs', 'colo', 'errorDetail', 'errorType', 'ok', 'targetHost', 'timeoutMs', 'totalMs', 'ttfbMs'];
+
+test('AC-PROXY-PIPE-01: behaviour unchanged', async () => {
+  const fixed = (status, body, headers) => async () => new Response(body, { status, headers });
+  const ok = await proxyMcp({ url: 'https://mcp.example/mcp', body: '{}', timeoutMs: 1000 }, { fetch: fixed(201, 'hi', { 'x-a': '1' }), colo: 'LHR' });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(keys(ok.json), ['body', 'diag', 'headers', 'status']);
+  assert.deepEqual(keys(ok.json.diag), DIAG_KEYS);
+  assert.deepEqual({ ...ok.json, diag: undefined, headers: ok.json.headers['x-a'] }, { status: 201, body: 'hi', headers: '1', diag: undefined });
+  const d = ok.json.diag;
+  assert.deepEqual([d.ok, d.errorType, d.errorDetail, d.attempts, d.colo, d.targetHost, d.timeoutMs], [true, null, null, 1, 'LHR', 'mcp.example', 1000]);
+  assert.deepEqual(d.attemptLog.map((a) => [a.n, a.outcome, a.status]), [[1, 'response', 201]]);
+
+  const refused = async () => { throw new TypeError('connect ECONNREFUSED'); };
+  const bad = await proxyMcp({ url: 'https://mcp.example/mcp', retries: 1 }, { fetch: refused });
+  assert.equal(bad.status, 200);
+  assert.deepEqual(keys(bad.json), ['body', 'diag', 'headers', 'status']);
+  assert.deepEqual(keys(bad.json.diag), DIAG_KEYS);
+  assert.deepEqual([bad.json.status, bad.json.headers, bad.json.diag.ok, bad.json.diag.errorType, bad.json.diag.errorDetail],
+    [0, {}, false, 'network', 'connect ECONNREFUSED']);
+  assert.deepEqual([bad.json.diag.ttfbMs, bad.json.diag.bodyMs, bad.json.diag.attempts, bad.json.diag.colo, bad.json.diag.timeoutMs], [null, null, 2, null, 15000]);
+  assert.deepEqual(bad.json.diag.attemptLog.map((a) => [a.n, a.outcome, a.status]), [[1, 'network', null], [2, 'network', null]]);
+  assert.deepEqual(JSON.parse(bad.json.body), { jsonrpc: '2.0', error: { code: -32001, message: 'connect ECONNREFUSED' }, id: null });
+
+  assert.deepEqual(await proxyMcp({}, { fetch: refused }), { status: 400, json: { error: "Missing 'url' in request" } });
+  assert.deepEqual(await proxyMcp({ url: 'nope' }, { fetch: refused }), { status: 400, json: { error: 'Invalid target URL' } });
+  assert.deepEqual(await proxyMcp({ url: 'https://x.example/' }, { fetch: refused, allowedOrigins: ['y.example'] }),
+    { status: 403, json: { error: 'Target domain not in allowlist', allowed: ['y.example'] } });
+
+  const sent = [];
+  await proxyMcp({ url: 'https://mcp.example/mcp', method: 'get', body: 'dropped' }, { fetch: async (u, i) => { sent.push(i); return new Response(''); } });
+  assert.deepEqual([sent[0].method, sent[0].body, sent[0].redirect, sent[0].headers.get('content-type')], ['GET', null, 'follow', null]);
+});
+
+// ── The pipeline steps, each on its own (#82) ─────────────────────────────
+
+test('validateTarget: parses the URL and applies the allowlist', () => {
+  assert.equal(validateTarget('https://a.example/mcp', []).url.hostname, 'a.example');
+  assert.equal(validateTarget('https://a.example/mcp', ['a.example']).url.pathname, '/mcp');
+  assert.deepEqual(validateTarget('nope', []).error, { status: 400, json: { error: 'Invalid target URL' } });
+  assert.equal(validateTarget('https://b.example/', ['a.example']).error.status, 403);
+});
+
+test('buildOutHeaders: drops hop-by-hop headers and repairs MCP headers by purpose', () => {
+  const mcp = buildOutHeaders({ Host: 'x', Origin: 'o', 'X-Keep': '1', Accept: 'application/json' }, 'POST', 'mcp');
+  assert.deepEqual([mcp.get('host'), mcp.get('origin'), mcp.get('x-keep')], [null, null, '1']);
+  assert.equal(mcp.get('accept'), 'application/json, text/event-stream');
+  assert.equal(mcp.get('content-type'), 'application/json');
+  assert.equal(buildOutHeaders({}, 'GET', 'mcp').get('content-type'), null);
+  const oauth = buildOutHeaders({}, 'POST', 'oauth');
+  assert.deepEqual([oauth.get('accept'), oauth.get('content-type')], ['application/json', null]);
+});
+
+test('runAttempts: stops at the first response, otherwise tries every attempt with backoff', async () => {
+  const waits = [];
+  const wait = async (n) => { waits.push(n); };
+  const fail = { errorType: 'network', errorDetail: 'x', ms: 1 };
+  const seq = [fail, fail, { response: true, status: 200, ms: 5 }];
+  const hit = await runAttempts(3, async (n) => seq[n - 1], wait);
+  assert.equal(hit.attempt, 3);
+  assert.deepEqual(hit.attemptLog.map((a) => a.outcome), ['network', 'network', 'response']);
+  assert.deepEqual(waits, [1, 2]);
+  const miss = await runAttempts(2, async () => fail, wait);
+  assert.equal(miss.failure, fail);
+  assert.equal(miss.attemptLog.length, 2);
+  assert.deepEqual(waits, [1, 2, 1], 'no wait after the last attempt');
+});
+
+test('attemptOnce: reads a response, or classifies the failure', async () => {
+  const req = { url: 'https://a.example/', method: 'POST', body: '{}', timeoutMs: 500, outHeaders: new Headers() };
+  const r = await attemptOnce(req, async () => new Response('ok', { status: 202, headers: { 'x-b': '2' } }));
+  assert.deepEqual([r.response, r.status, r.body, r.headers['x-b'], typeof r.ttfbMs], [true, 202, 'ok', '2', 'number']);
+  const hang = (u, init) => new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(new DOMException('x', 'AbortError'))));
+  const t = await attemptOnce(req, hang);
+  assert.deepEqual([t.errorType, t.errorDetail], ['timeout', 'No response within 500ms']);
+  const n = await attemptOnce(req, async () => { throw new Error(''); });
+  assert.deepEqual([n.errorType, n.errorDetail], ['network', 'Network failure reaching origin']);
 });

@@ -1,15 +1,4 @@
 {
-  "src/core/proxy.js": {
-    "complexity": {
-      "proxyMcp": 39
-    },
-    "max-lines-per-function": {
-      "proxyMcp": 145
-    },
-    "sonarjs/cognitive-complexity": {
-      "proxyMcp": 41
-    }
-  },
   "src/hosts/cloudflare.js": {
     "complexity": {
       "handleRequest": 15
