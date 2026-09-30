@@ -14,25 +14,27 @@
  * The build wraps this file into two entry points:
  *   dist/worker.js   Service Worker format — paste into the dashboard editor
  *   dist/worker.mjs  ES module format      — for `wrangler deploy`
- * Both call handleRequest(request, allowedOriginsString), which never throws:
+ * Both call handleRequest(request, env), env holding the Worker's variables
+ * (see CONFIG_VARS in src/core/config.js). handleRequest never throws:
  * an unexpected error is logged and answered with a JSON 500, not Cloudflare's 1101 page.
  */
-import { proxyMcp, parseAllowedOrigins } from '../core/proxy.js';
+import { proxyMcp } from '../core/proxy.js';
+import { parseConfig } from '../core/config.js';
 import { clientMetadataDocument, CLIENT_METADATA_PATH, CALLBACK_PATH } from '../core/oauth-client.js';
 import { CONTENT_SECURITY_POLICY } from '../core/security-headers.js';
 
 /* global HTML */
 
-export async function handleRequest(request, allowedOriginsStr) {
+export async function handleRequest(request, env) {
   try {
-    return await route(request, allowedOriginsStr);
+    return await route(request, env || {});
   } catch (err) {
     console.error(err);   // the detail goes to the Worker log, not the response
     return cfJson(500, { error: 'Internal error' });
   }
 }
 
-async function route(request, allowedOriginsStr) {
+async function route(request, env) {
   var url = new URL(request.url);
 
   if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '' || url.pathname === CALLBACK_PATH)) {
@@ -43,7 +45,7 @@ async function route(request, allowedOriginsStr) {
     return cfJson(200, clientMetadataDocument(url.origin));
   }
 
-  if (request.method === 'POST' && url.pathname === '/proxy') return serveProxy(request, url, allowedOriginsStr);
+  if (request.method === 'POST' && url.pathname === '/proxy') return serveProxy(request, url, env);
 
   // No CORS grants: preflights from other origins get no Access-Control headers and fail
   if (request.method === 'OPTIONS') return new Response(null, { status: 204 });
@@ -51,7 +53,21 @@ async function route(request, allowedOriginsStr) {
   return new Response('Not found', { status: 404 });
 }
 
-async function serveProxy(request, url, allowedOriginsStr) {
+var warned = false;
+
+/** The Worker's settings, validated; logs any warnings once per isolate */
+function workerConfig(env) {
+  var parsed = parseConfig(env);
+  if (!warned && parsed.warnings.length) {
+    warned = true;
+    parsed.warnings.forEach(function (w) { console.warn(w); });
+  }
+  return parsed;
+}
+
+async function serveProxy(request, url, env) {
+  var settings = workerConfig(env);
+  if (settings.errors.length) return cfJson(500, { error: 'Configuration error: ' + settings.errors.join('; ') });
   var origin = request.headers.get('Origin');
   if (origin && origin !== url.origin) {
     return cfJson(403, { error: 'Cross-origin requests to this proxy are not allowed' });
@@ -64,7 +80,10 @@ async function serveProxy(request, url, allowedOriginsStr) {
   }
   var result = await proxyMcp(payload, {
     fetch: fetch,
-    allowedOrigins: parseAllowedOrigins(allowedOriginsStr),
+    allowedOrigins: settings.config.allowedTargets,
+    maxTimeoutMs: settings.config.maxTimeoutMs,
+    maxRetries: settings.config.maxRetries,
+    maxResponseBytes: settings.config.maxResponseBytes,
     // Where this Worker instance runs — useful when flapping is PoP-specific
     colo: (request.cf && request.cf.colo) ? request.cf.colo : null,
     // Aborts when the browser goes away; workerd fires it only with the enable_request_signal compatibility flag

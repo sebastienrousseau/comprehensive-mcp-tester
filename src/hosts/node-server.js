@@ -6,11 +6,10 @@
  *   PORT=9000 npm start
  *   npx mcp-tester                 (once published)
  *
- * Environment
- *   PORT                      default 8787
- *   HOST                      default 127.0.0.1 (loopback only)
- *   ALLOWED_ORIGINS           target MCP hosts the proxy may reach, e.g. "developer.hsbc.com" (empty = any)
- *   MCP_TESTER_ALLOWED_HOSTS  extra Host header values to accept, e.g. "mcp-tester.internal:8787"
+ * Environment: `mcp-tester --help` lists every variable. PORT and HOST choose
+ * where it listens, MCP_TESTER_ALLOWED_HOSTS the extra Host header values it
+ * answers to; the proxy's settings are shared with the Worker (src/core/config.js).
+ * Invalid settings stop it at startup; the effective policy is printed.
  *
  * Unlike the public Worker, this host is NOT an open CORS proxy. A local proxy
  * sits inside your network, so any web page you visit could try to use it to
@@ -24,6 +23,7 @@ import http from 'node:http';
 import { pathToFileURL } from 'node:url';
 import { realpathSync } from 'node:fs';
 import { proxyMcp, parseAllowedOrigins } from '../core/proxy.js';
+import { parseConfig, describeConfig, CONFIG_VARS } from '../core/config.js';
 import { clientMetadataDocument, CLIENT_METADATA_PATH, CALLBACK_PATH } from '../core/oauth-client.js';
 import { CONTENT_SECURITY_POLICY } from '../core/security-headers.js';
 import { assembleHtml } from '../ui/assemble.js';
@@ -101,18 +101,23 @@ async function serveProxy(req, res, hostHeader, ctx) {
   // The browser went away (Cancel, reload, closed tab): stop the upstream fetch too
   const gone = new AbortController();
   res.on('close', () => { if (!res.writableFinished) gone.abort(); });
-  const result = await proxyMcp(payload, { fetch: ctx.fetch, allowedOrigins: ctx.allowedOrigins, colo: 'local', signal: gone.signal });
+  const result = await proxyMcp(payload, Object.assign({ fetch: ctx.fetch, colo: 'local', signal: gone.signal }, ctx.limits));
   return sendJson(res, result.status, result.json);
 }
 
 /**
  * @param {object} [opts]
- * @param {string} [opts.allowedOrigins]  comma list of target hosts (defaults to env ALLOWED_ORIGINS)
+ * @param {object} [opts.config]          parseConfig().config (defaults to one read from process.env)
+ * @param {string} [opts.allowedOrigins]  comma list of allowed targets, overriding the config's (tests)
  * @param {string} [opts.allowedHosts]    comma list of extra Host header values
  * @param {Function} [opts.fetch]         fetch implementation (tests)
  */
 export function createServer(opts = {}) {
-  const allowedOrigins = parseAllowedOrigins(opts.allowedOrigins ?? process.env.ALLOWED_ORIGINS);
+  const config = opts.config || parseConfig(process.env).config;
+  const limits = {
+    allowedOrigins: opts.allowedOrigins !== undefined ? parseAllowedOrigins(opts.allowedOrigins) : config.allowedTargets,
+    maxTimeoutMs: config.maxTimeoutMs, maxRetries: config.maxRetries, maxResponseBytes: config.maxResponseBytes,
+  };
   const extraHosts = parseAllowedOrigins(opts.allowedHosts ?? process.env.MCP_TESTER_ALLOWED_HOSTS);
   const doFetch = opts.fetch || fetch;
 
@@ -140,7 +145,7 @@ export function createServer(opts = {}) {
         return sendJson(res, 200, clientMetadataDocument('http://' + hostHeader));
       }
 
-      if (req.method === 'POST' && url.pathname === '/proxy') return serveProxy(req, res, hostHeader, { fetch: doFetch, allowedOrigins });
+      if (req.method === 'POST' && url.pathname === '/proxy') return serveProxy(req, res, hostHeader, { fetch: doFetch, limits });
 
       // No CORS grants: preflights from other origins get no Access-Control headers and fail
       if (req.method === 'OPTIONS') return send(res, 204, {}, '');
@@ -161,10 +166,40 @@ function isMain() {
   catch { return false; }
 }
 
-if (isMain()) {
+const LOCAL_VARS = [
+  { name: 'PORT', help: 'Port to listen on (default 8787; 0 picks a free one).' },
+  { name: 'HOST', help: 'Address to listen on (default 127.0.0.1, this machine only; 0.0.0.0 exposes it to your network).' },
+  { name: 'MCP_TESTER_ALLOWED_HOSTS', help: 'Extra Host header values to answer to, e.g. "mcp-tester.internal:8787".' },
+];
+
+function usage() {
+  const rows = LOCAL_VARS.concat(CONFIG_VARS).map((v) => '  ' + v.name + '\n      ' + v.help);
+  return 'Usage: mcp-tester [--help]\n\nServes MCP Tester and its proxy on http://127.0.0.1:8787.\n\nEnvironment:\n' + rows.join('\n') + '\n';
+}
+
+function bindMode(host) {
+  return LOOPBACK_HOSTS.includes(host) ? 'loopback only' : 'all interfaces: reachable from your network';
+}
+
+/** Validated settings, or exit 1 naming each bad variable */
+function startupConfig() {
+  const { config, errors, warnings } = parseConfig(process.env);
+  for (const w of warnings) console.error('Warning: ' + w);
+  if (errors.length) {
+    for (const e of errors) console.error('Error: ' + e);
+    console.error('Not started. Run with --help for the settings.');
+    process.exit(1);
+  }
+  return config;
+}
+
+if (isMain() && process.argv.includes('--help')) {
+  process.stdout.write(usage());
+} else if (isMain()) {
+  const config = startupConfig();
   const port = parseInt(process.env.PORT || '8787', 10);
   const host = process.env.HOST || '127.0.0.1';
-  const server = createServer();
+  const server = createServer({ config });
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') console.error(`Port ${port} is already in use. Try PORT=${port + 1} npm start`);
     else console.error(err);
@@ -172,7 +207,10 @@ if (isMain()) {
   });
   server.listen(port, host, () => {
     const shown = host === '0.0.0.0' ? 'localhost' : host;
-    console.log(`MCP Tester running at http://${shown}:${server.address().port}`);
-    if (process.env.ALLOWED_ORIGINS) console.log(`Proxy restricted to: ${process.env.ALLOWED_ORIGINS}`);
+    console.log([
+      `MCP Tester running at http://${shown}:${server.address().port}`,
+      `  Bind:            ${host}:${server.address().port} (${bindMode(host)})`,
+      describeConfig(config),
+    ].join('\n'));
   });
 }

@@ -409,3 +409,14 @@ test('cancellation: env.signal aborts the attempt, is classified cancelled, and 
   assert.equal(r.json.diag.errorType, 'cancelled');
   assert.equal(hits, 1, 'an already-cancelled request is never sent');
 });
+
+test('operator ceilings: timeout and retries are clamped to the host\'s limits', async () => {
+  const hang = (u, init) => new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(new DOMException('x', 'AbortError'))));
+  const { json } = await proxyMcp({ url: 'https://a.example/mcp', timeoutMs: 60000, retries: 3, body: rpc('tools/list', 1) }, { fetch: hang, maxTimeoutMs: 600, maxRetries: 0 });
+  assert.equal(json.diag.timeoutMs, 600, 'a request cannot ask for more than the ceiling');
+  assert.equal(json.diag.attempts, 1);
+  const dflt = await proxyMcp({ url: 'https://a.example/mcp', body: '{}' }, { fetch: async () => new Response(''), maxTimeoutMs: 5000 });
+  assert.equal(dflt.json.diag.timeoutMs, 5000, 'the default timeout never exceeds the ceiling');
+  const origin = await proxyMcp({ url: 'http://a.example/mcp', body: '{}' }, { fetch: async () => new Response(''), allowedOrigins: ['https://a.example'] });
+  assert.equal(origin.status, 403, 'an origin entry matches scheme and port too');
+});

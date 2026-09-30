@@ -14,6 +14,7 @@ import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 import vm from 'node:vm';
+import { CONFIG_VARS } from '../src/core/config.js';
 import { assembleHtml } from '../src/ui/assemble.js';
 import { isMain } from './is-main.mjs';
 
@@ -55,7 +56,7 @@ export function platformViolations(dir) {
 
 /** Core sources concatenated into the Worker, dependencies first */
 const CORE_FILES = [
-  'src/core/proxy.js', 'src/core/oauth-client.js', 'src/core/security-headers.js',
+  'src/core/proxy.js', 'src/core/config.js', 'src/core/oauth-client.js', 'src/core/security-headers.js',
   'src/core/compliance/rules/version.js', 'src/core/compliance/catalogue.js', 'src/core/compliance/engine.js',
 ];
 
@@ -83,9 +84,9 @@ function banner(format) {
     ' *',
     ...deploy,
     ' *',
-    ' * OPTIONAL: set ALLOWED_ORIGINS (Settings → Variables) to restrict which hosts this',
-    ' * Worker will proxy to, e.g. "developer.hsbc.com". Include the authorization server',
-    ' * hosts too if you sign in. This Worker is public: put Cloudflare Access in front of',
+    ' * OPTIONAL: set MCP_TESTER_ALLOWED_TARGETS (Settings → Variables) to restrict which',
+    ' * servers this Worker will proxy to, e.g. "https://developer.hsbc.com". Include the',
+    ' * authorization servers too if you sign in. (ALLOWED_ORIGINS still works, deprecated.) This Worker is public: put Cloudflare Access in front of',
     ' * it before using it with credentials, with a bypass for /oauth/client-metadata.json',
     ' * so authorization servers can fetch the client metadata document.',
     ' */',
@@ -116,13 +117,17 @@ export function build({ write = true, coreDir = join(ROOT, 'src', 'core') } = {}
 
   const sw = banner('sw') + htmlConst + core + '\n' + host + '\n' +
     'addEventListener("fetch", function (event) {\n' +
-    '  event.respondWith(handleRequest(event.request, typeof ALLOWED_ORIGINS !== "undefined" ? ALLOWED_ORIGINS : ""));\n' +
+    '  // Service Worker format: settings are globals; collect the ones MCP Tester reads\n' +
+    '  var env = {\n' +
+    CONFIG_VARS.map((v) => '    ' + v.name + ': typeof ' + v.name + ' !== "undefined" ? ' + v.name + ' : undefined,\n').join('') +
+    '  };\n' +
+    '  event.respondWith(handleRequest(event.request, env));\n' +
     '});\n';
 
   const mod = banner('module') + htmlConst + core + '\n' + host + '\n' +
     'export default {\n' +
     '  fetch(request, env) {\n' +
-    '    return handleRequest(request, (env && env.ALLOWED_ORIGINS) || "");\n' +
+    '    return handleRequest(request, env || {});\n' +
     '  },\n' +
     '};\n';
 

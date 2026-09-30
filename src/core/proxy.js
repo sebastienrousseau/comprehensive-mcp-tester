@@ -75,20 +75,35 @@ function retriesSkipped(payload, retries) {
   return 'not retried: ' + (rpc ? rpc + ' may change state on the server' : 'only read-only requests are retried');
 }
 
-/** Reads the UI's payload into a request with defaults and clamped limits. */
-function readRequest(payload) {
-  var retries = clampInt(payload.retries, 0, MAX_RETRIES, 0);
+/** The operator's ceilings from the host's env, or the built-in ones */
+function limitsOf(env) {
+  return {
+    maxTimeoutMs: env.maxTimeoutMs || MAX_TIMEOUT_MS,
+    maxRetries: env.maxRetries != null ? env.maxRetries : MAX_RETRIES,
+  };
+}
+
+/** Reads the UI's payload into a request with defaults, clamped to the operator's ceilings. */
+function readRequest(payload, limits) {
+  var retries = clampInt(payload.retries, 0, limits.maxRetries, 0);
   var skipped = retriesSkipped(payload, retries);
   return {
     url: payload.url,
     method: String(payload.method || 'POST').toUpperCase(),
     headers: payload.headers || {},
     body: payload.body || null,
-    timeoutMs: clampInt(payload.timeoutMs, 500, MAX_TIMEOUT_MS, DEFAULT_TIMEOUT_MS),
+    timeoutMs: clampInt(payload.timeoutMs, 500, limits.maxTimeoutMs, Math.min(DEFAULT_TIMEOUT_MS, limits.maxTimeoutMs)),
     retries: skipped ? 0 : retries,
     retriesSkipped: skipped,
     purpose: payload.purpose === 'oauth' ? 'oauth' : 'mcp',
   };
+}
+
+/** An entry is an origin ("https://a.example:8443"), or a bare hostname (the deprecated form: any scheme or port) */
+function isAllowed(url, allowed) {
+  return allowed.some(function (entry) {
+    return entry.indexOf('://') === -1 ? entry === url.hostname : entry === url.origin;
+  });
 }
 
 /** → { url: URL } or { error: { status, json } } */
@@ -99,7 +114,7 @@ export function validateTarget(targetUrl, allowed) {
   } catch {
     return { error: badRequest('Invalid target URL') };
   }
-  if (allowed.length > 0 && allowed.indexOf(parsed.hostname) === -1) {
+  if (allowed.length > 0 && !isAllowed(parsed, allowed)) {
     return { error: { status: 403, json: { error: 'Target domain not in allowlist', allowed: allowed } } };
   }
   return { url: parsed };
@@ -378,14 +393,16 @@ export function failureEnvelope(req, colo, r) {
  * @param {object} payload  parsed proxy request from the UI
  * @param {object} env
  * @param {Function} env.fetch          fetch implementation (global fetch in every host)
- * @param {string[]} [env.allowedOrigins] target hostnames allowed; empty = any
+ * @param {string[]} [env.allowedOrigins] allowed targets: origins, or hostnames (deprecated form); empty = any
+ * @param {number} [env.maxTimeoutMs]  operator ceiling for timeoutMs (default MAX_TIMEOUT_MS)
+ * @param {number} [env.maxRetries]    operator ceiling for retries (default MAX_RETRIES)
  * @param {string|null} [env.colo]      where this proxy instance runs (diagnostics only)
  * @param {number} [env.maxResponseBytes] body cap; defaults to DEFAULT_MAX_RESPONSE_BYTES
  * @param {AbortSignal} [env.signal]    aborted when the caller goes away: stops the fetch and any retry
  */
 export async function proxyMcp(payload, env) {
   env = env || {};
-  var req = readRequest(payload || {});
+  var req = readRequest(payload || {}, limitsOf(env));
   if (!req.url) return badRequest("Missing 'url' in request");
   var target = validateTarget(req.url, env.allowedOrigins || []);
   if (target.error) return target.error;

@@ -23,11 +23,16 @@ Releases start at 0.0.1 and each one increments the version by exactly 0.0.1 ([p
 - A logo, and stated policies for versioning (every release is +0.0.1), deprecation (announced, then kept for at least one release) and the Node.js floor (the oldest LTS still in maintenance), in `docs/POLICIES.md`.
 - `ROADMAP.md`, `CHANGELOG.md`, `DEVELOPMENT.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `docs/ARCHITECTURE.md`, `docs/POLICIES.md`, `docs/STANDARDS.md`, issue and PR templates, Dependabot, and a docs-lint CI job.
 
+### Deprecated
+
+- `ALLOWED_ORIGINS`, in favour of `MCP_TESTER_ALLOWED_TARGETS`. It keeps working, with a warning at startup (local server) or in the Worker log, for at least one more release ([#88](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/88)).
+
 ### Changed
 
 - **Version numbering restarts at 0.0.1.** Nothing was ever released under 0.8.0 to 0.10.0, so the first release is 0.0.1 under the versioning policy; until then the version reads 0.0.0.
 - **Node.js 22 or later is now required** (was 20). Node 20 reached end of life on 2026-04-30; CI now tests Node 22 and 24 ([#58](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/58)).
 - README restructured into the standard layout; the roadmap moved to `ROADMAP.md`.
+- Operator settings, validated by both hosts: `MCP_TESTER_ALLOWED_TARGETS` (origins such as `https://developer.hsbc.com`, replacing hostnames), and ceilings for the timeout (`MCP_TESTER_MAX_TIMEOUT_MS`), retries (`MCP_TESTER_MAX_RETRIES`) and response size (`MCP_TESTER_MAX_RESPONSE_BYTES`). An invalid value stops the local server, or makes the Worker's `/proxy` answer a JSON 500, naming the variable. The local server prints its bind address, allowed targets and limits on start, and `mcp-tester --help` lists every setting ([#88](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/88)).
 - A Cancel button on a running tool call, resource read or prompt: it frees the UI at once, stops the proxy's fetch to the server (both hosts now stop it whenever the browser goes away), and sends `notifications/cancelled` with the request's id. `wrangler.toml` sets the `enable_request_signal` compatibility flag the Worker needs for this; dashboard deployments add it under Settings. The mock server gains the `hang-call` scenario ([#86](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/86)).
 - A header with an invalid name (such as `bad name`) or a line break in its value is refused with a 400 that names it, instead of crashing the proxy: the local server answered a bare 500 and the Worker Cloudflare's error 1101. The Worker now answers any unexpected error with a JSON 500 and logs the detail ([#87](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/87)).
 - **Retries apply only to requests that read**: `server/discover`, lists, `ping`, `resources/read`, `prompts/get` and OAuth discovery. A `tools/call`, `initialize` or token request that times out is never sent again, so a retry cannot repeat a side effect; the Log says why it was not retried ([#85](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/85)).

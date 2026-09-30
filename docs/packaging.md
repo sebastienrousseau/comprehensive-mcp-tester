@@ -46,7 +46,7 @@ make install PREFIX=/usr DESTDIR="$pkgdir"   # usual staged-install variables
 | `LIBDIR` | `$(PREFIX)/lib/mcp-tester` | `src/` and `package.json` |
 | `DESTDIR` | empty | Staging root; the wrapper still points at `PREFIX`, not at the staging directory |
 
-The server reads `PORT`, `HOST`, `ALLOWED_ORIGINS` and `MCP_TESTER_ALLOWED_HOSTS` ([configuration](../README.md#configuration)). It binds `127.0.0.1` by default. A package that binds another address, such as a container, must set `MCP_TESTER_ALLOWED_HOSTS` to the hostnames it is served under, because the server rejects unknown `Host` headers to block DNS rebinding.
+The server reads `PORT`, `HOST`, `MCP_TESTER_ALLOWED_HOSTS` and the proxy settings (`MCP_TESTER_ALLOWED_TARGETS` and the limits; `mcp-tester --help` lists them all, see [configuration](../README.md#configuration)). It exits with status 1 when a setting is invalid. It binds `127.0.0.1` by default. A package that binds another address, such as a container, must set `MCP_TESTER_ALLOWED_HOSTS` to the hostnames it is served under, because the server rejects unknown `Host` headers to block DNS rebinding.
 
 ## Testing offline
 
