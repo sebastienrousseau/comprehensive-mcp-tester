@@ -55,10 +55,12 @@ The UI depends on this envelope, so a change to it updates both hosts and their 
 | :--- | :--- |
 | `status` | The server's HTTP status, or `0` when the transport failed (timeout or network) |
 | `headers` | The server's response headers |
-| `body` | The server's response body; on a transport failure, a JSON-RPC error |
-| `diag` | `ok`, `errorType` (`timeout` or `network`), `errorDetail`, `ttfbMs`, `bodyMs`, `totalMs`, `attempts`, `attemptLog`, `colo`, `targetHost`, `timeoutMs` |
+| `body` | The server's response body, cut at the size cap (8 MB); on a transport failure, a JSON-RPC error |
+| `diag` | `ok`, `errorType` (`timeout` or `network`), `errorDetail`, `ttfbMs`, `bodyMs`, `totalMs`, `bodyBytes`, `truncated`, `attempts`, `attemptLog`, `colo`, `targetHost`, `timeoutMs` |
 
 A transport failure is reported with HTTP 200 and envelope status 0 so the UI can always read the diagnostics.
+
+The proxy reads the server's body as a stream and stops at the size cap, cancelling the rest, so one large or endless response cannot exhaust the Worker isolate or the browser. `diag.bodyBytes` is the number of bytes kept, and `diag.truncated` is `true` when the body was cut; the Log shows both. On a transport failure they are `null` and `false`.
 
 ## Decisions already made
 

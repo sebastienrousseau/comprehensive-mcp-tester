@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { proxyMcp, parseAllowedOrigins, clampInt, validateTarget, buildOutHeaders, runAttempts, attemptOnce } from '../src/core/proxy.js';
+import { proxyMcp, parseAllowedOrigins, clampInt, validateTarget, buildOutHeaders, runAttempts, attemptOnce, DEFAULT_MAX_RESPONSE_BYTES } from '../src/core/proxy.js';
 import { startMockServer } from './fixtures/mock-mcp-server.mjs';
 
 let mock;
@@ -140,7 +140,7 @@ test('purpose "oauth": no MCP Accept or Content-Type repair; defaults to Accept:
 // ── The envelope contract, pinned before the pipeline split (#82) ─────────
 
 const keys = (o) => Object.keys(o).sort();
-const DIAG_KEYS = ['attemptLog', 'attempts', 'bodyMs', 'colo', 'errorDetail', 'errorType', 'ok', 'targetHost', 'timeoutMs', 'totalMs', 'ttfbMs'];
+const DIAG_KEYS = ['attemptLog', 'attempts', 'bodyBytes', 'bodyMs', 'colo', 'errorDetail', 'errorType', 'ok', 'targetHost', 'timeoutMs', 'totalMs', 'truncated', 'ttfbMs'];
 
 test('AC-PROXY-PIPE-01: behaviour unchanged', async () => {
   const fixed = (status, body, headers) => async () => new Response(body, { status, headers });
@@ -217,4 +217,59 @@ test('attemptOnce: reads a response, or classifies the failure', async () => {
   assert.deepEqual([t.errorType, t.errorDetail], ['timeout', 'No response within 500ms']);
   const n = await attemptOnce(req, async () => { throw new Error(''); });
   assert.deepEqual([n.errorType, n.errorDetail], ['network', 'Network failure reaching origin']);
+});
+
+// ── Bounded read (#83) ────────────────────────────────────────────────────
+
+const MB = 1024 * 1024;
+/** An origin streaming `total` bytes of 'a' in fresh 64 KB chunks, as a network stack would; counts what it was asked for. */
+function streamingOrigin(total) {
+  const seen = { pulled: 0, cancelled: false };
+  const chunk = new Uint8Array(64 * 1024).fill(97);
+  const fetchImpl = async () => new Response(new ReadableStream({
+    pull(c) {
+      if (seen.pulled >= total) return c.close();
+      seen.pulled += chunk.byteLength;
+      c.enqueue(chunk.slice());
+    },
+    cancel() { seen.cancelled = true; },
+  }, { highWaterMark: 0 }), { headers: { 'content-type': 'application/json' } });
+  return { fetchImpl, seen };
+}
+
+test('AC-PROXY-BOUND-01: a large response is truncated', async () => {
+  const { fetchImpl, seen } = streamingOrigin(20 * MB);
+  const { json } = await proxyMcp({ url: 'https://big.example/mcp', body: '{}' }, { fetch: fetchImpl, maxResponseBytes: 8 * MB });
+  assert.equal(json.status, 200);
+  assert.equal(json.diag.ok, true);
+  assert.equal(json.diag.truncated, true);
+  assert.equal(json.diag.bodyBytes, 8 * MB);
+  assert.equal(json.body.length, 8 * MB);
+  assert.ok(seen.cancelled, 'the origin stream is cancelled at the cap');
+  assert.ok(seen.pulled <= 8 * MB + 2 * 64 * 1024, `read ${seen.pulled} bytes past an 8 MB cap`);
+});
+
+test('AC-PROXY-BOUND-02: memory stays bounded', async () => {
+  const { fetchImpl } = streamingOrigin(20 * MB);
+  // Warm up first: the one-time cost of Response, streams and TextDecoder is not per request.
+  await proxyMcp({ url: 'https://big.example/mcp', body: '{}' }, { fetch: streamingOrigin(MB).fetchImpl });
+  const before = process.memoryUsage().rss;
+  let peak = before;
+  const sampler = setInterval(() => { peak = Math.max(peak, process.memoryUsage().rss); }, 5);
+  const { json } = await proxyMcp({ url: 'https://big.example/mcp', body: '{}' }, { fetch: fetchImpl, maxResponseBytes: 8 * MB });
+  clearInterval(sampler);
+  peak = Math.max(peak, process.memoryUsage().rss);
+  assert.equal(json.diag.truncated, true);
+  assert.ok(peak - before < 3 * 8 * MB, `RSS grew ${((peak - before) / MB).toFixed(1)} MB for an 8 MB cap`);
+});
+
+test('bounded read: under the cap nothing is cut, and the default cap is 8 MB', async () => {
+  const { json } = await proxyMcp({ url: 'https://a.example/mcp', body: '{}' }, { fetch: async () => new Response('héllo') });
+  assert.deepEqual([json.body, json.diag.truncated, json.diag.bodyBytes], ['héllo', false, 6]);
+  const empty = await proxyMcp({ url: 'https://a.example/mcp', body: '{}' }, { fetch: async () => new Response(null, { status: 204 }) });
+  assert.deepEqual([empty.json.body, empty.json.diag.bodyBytes], ['', 0]);
+  assert.equal(DEFAULT_MAX_RESPONSE_BYTES, 8 * MB);
+  const exact = streamingOrigin(128 * 1024);
+  const r = await proxyMcp({ url: 'https://a.example/mcp', body: '{}' }, { fetch: exact.fetchImpl, maxResponseBytes: 128 * 1024 });
+  assert.deepEqual([r.json.diag.truncated, r.json.diag.bodyBytes], [false, 128 * 1024], 'a body of exactly the cap is whole');
 });

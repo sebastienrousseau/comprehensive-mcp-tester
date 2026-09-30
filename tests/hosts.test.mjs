@@ -32,7 +32,7 @@ describe('Cloudflare Service Worker bundle (dist/worker.js)', () => {
     const { sw } = build({ write: false });
     const ctx = vm.createContext({
       addEventListener: (type, fn) => { if (type === 'fetch') handler = fn; },
-      Request, Response, Headers, URL, fetch, AbortController, setTimeout, clearTimeout, Date, JSON, console,
+      Request, Response, Headers, URL, fetch, AbortController, TextDecoder, setTimeout, clearTimeout, Date, JSON, console,
       ...globals,
     });
     vm.runInContext(sw, ctx, { filename: 'worker.js' });

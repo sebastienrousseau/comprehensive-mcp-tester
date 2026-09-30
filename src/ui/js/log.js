@@ -47,18 +47,7 @@ function renderLog() {
 
     html += '<div class="log-body" hidden>';
 
-    if (e.diag) {
-      html += '<div class="log-body-section"><div class="log-body-label">Timing</div><div class="log-body-content" style="color:var(--ink-muted)">';
-      if (e.diag.ttfbMs != null) html += 'time to first byte: ' + fmtMs(e.diag.ttfbMs) + '\n';
-      if (e.diag.bodyMs != null) html += 'body transfer:      ' + fmtMs(e.diag.bodyMs) + '\n';
-      if (e.diag.totalMs != null) html += 'origin total:       ' + fmtMs(e.diag.totalMs) + '\n';
-      if (e.clientMs != null)     html += 'browser round trip: ' + fmtMs(e.clientMs) + '\n';
-      if (e.overheadMs != null)   html += 'proxy overhead:     ' + fmtMs(e.overheadMs) + '\n';
-      if (e.diag.attempts)        html += 'attempts:           ' + e.diag.attempts + '\n';
-      if (e.diag.colo)            html += 'worker colo:        ' + e.diag.colo + '\n';
-      if (e.diag.errorType)       html += 'error type:         ' + e.diag.errorType + '\n';
-      html += '</div></div>';
-    }
+    if (e.diag) html += renderLogTiming(e);
 
     if (e.headers) {
       html += '<div class="log-body-section"><div class="log-body-label">Response Headers</div>';
@@ -71,3 +60,27 @@ function renderLog() {
   return html;
 }
 
+function renderLogTiming(e) {
+  var d = e.diag;
+  var size = d.bodyBytes == null ? null : fmtBytes(d.bodyBytes) + (d.truncated ? ' (truncated at the proxy\'s cap)' : '');
+  var rows = [
+    ['time to first byte', timingOrNull(d.ttfbMs)],
+    ['body transfer', timingOrNull(d.bodyMs)],
+    ['origin total', timingOrNull(d.totalMs)],
+    ['browser round trip', timingOrNull(e.clientMs)],
+    ['proxy overhead', timingOrNull(e.overheadMs)],
+    ['body size', size],
+    ['attempts', d.attempts || null],
+    ['worker colo', d.colo || null],
+    ['error type', d.errorType || null]
+  ];
+  var html = '<div class="log-body-section"><div class="log-body-label">Timing</div><div class="log-body-content" style="color:var(--ink-muted)">';
+  for (var i = 0; i < rows.length; i++) {
+    if (rows[i][1] != null) html += (rows[i][0] + ':' + '                    ').slice(0, 20) + rows[i][1] + '\n';
+  }
+  return html + '</div></div>';
+}
+
+function timingOrNull(v) {
+  return v == null ? null : fmtMs(v);
+}

@@ -376,6 +376,17 @@ describe('request log', () => {
     assert.deepEqual(c.state.log[0].body, { n: cap + 249 }, 'the newest entry is first');
     assert.deepEqual(c.state.log[cap - 1].body, { n: 250 }, 'the oldest entries are the ones dropped');
   });
+
+  test('AC-PROXY-BOUND-03: the UI says the body was cut', () => {
+    const diag = { ok: true, totalMs: 40, ttfbMs: 5, bodyMs: 35, attempts: 1, truncated: true, bodyBytes: 8388608 };
+    c.addLog('res', 'tools/list', { body: 'partial' }, 200, {}, { diag });
+    const html = c.renderLog();
+    assert.match(html, /8,388,608 bytes/);
+    assert.match(html, /truncated/i);
+    c.clearLog();
+    c.addLog('res', 'tools/list', { body: {} }, 200, {}, { diag: { ...diag, truncated: false, bodyBytes: 120 } });
+    assert.doesNotMatch(c.renderLog(), /truncated/i, 'a whole body is not called truncated');
+  });
 });
 
 describe('redirect fallback', () => {

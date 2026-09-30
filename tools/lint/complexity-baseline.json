@@ -51,10 +51,10 @@
   },
   "src/ui/js/log.js": {
     "complexity": {
-      "renderLog": 22
+      "renderLog": 14
     },
     "sonarjs/cognitive-complexity": {
-      "renderLog": 50
+      "renderLog": 26
     }
   },
   "src/ui/js/schema.js": {

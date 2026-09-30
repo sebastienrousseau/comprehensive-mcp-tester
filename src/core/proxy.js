@@ -13,6 +13,8 @@
  *   output { status, json }  where json is either
  *          { error }                                  (bad input, 4xx)
  *          { status, headers, body, diag }             (origin reached or failed)
+ *          The body is read up to env.maxResponseBytes (default 8 MB);
+ *          diag.truncated says whether it was cut, diag.bodyBytes how much was kept.
  *
  * A failed transport (timeout / network) is reported with HTTP 200 and
  * envelope status 0, so the UI can always read the diagnostics.
@@ -21,6 +23,7 @@
 export const DEFAULT_TIMEOUT_MS = 15000;
 export const MAX_TIMEOUT_MS = 120000;
 export const MAX_RETRIES = 3;
+export const DEFAULT_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 
 // Hop-by-hop and identity headers never forwarded to the origin
 export const SKIP_HEADERS = ['host', 'origin', 'referer', 'connection', 'upgrade', 'transfer-encoding', 'content-length'];
@@ -106,9 +109,9 @@ function transportError(err, timedOut, timeoutMs, ms) {
 
 /**
  * One fetch with its own timeout, covering the body as well as the headers.
- * → { response, status, headers, body, ttfbMs, bodyMs, ms } or { errorType, errorDetail, ms }
+ * → { response, status, headers, body, bodyBytes, truncated, ttfbMs, bodyMs, ms } or { errorType, errorDetail, ms }
  */
-export async function attemptOnce(req, doFetch) {
+export async function attemptOnce(req, doFetch, maxBytes) {
   // On Workers the clock advances on I/O, so spans around an awaited fetch are real.
   var t0 = Date.now();
   var controller = new AbortController();
@@ -124,15 +127,43 @@ export async function attemptOnce(req, doFetch) {
     });
     // fetch resolves once response headers arrive — time to first byte
     var tHeaders = Date.now();
-    var body = await resp.text();
+    var read = await readBounded(resp, maxBytes || DEFAULT_MAX_RESPONSE_BYTES);
     var tEnd = Date.now();
     var headers = {};
     resp.headers.forEach(function (val, key) { headers[key] = val; });
-    return { response: true, status: resp.status, headers: headers, body: body, ttfbMs: tHeaders - t0, bodyMs: tEnd - tHeaders, ms: tEnd - t0 };
+    return {
+      response: true, status: resp.status, headers: headers, body: read.text, bodyBytes: read.bytes, truncated: read.truncated,
+      ttfbMs: tHeaders - t0, bodyMs: tEnd - tHeaders, ms: tEnd - t0,
+    };
   } catch (err) {
     return transportError(err, timedOut, req.timeoutMs, Date.now() - t0);
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/**
+ * Reads a response body as UTF-8, keeping at most maxBytes and cancelling the
+ * stream there. Each chunk is decoded as it arrives and dropped, so memory holds
+ * the text read so far plus one chunk, never the whole body twice.
+ * → { text, bytes, truncated }
+ */
+export async function readBounded(res, maxBytes) {
+  if (!res.body) return { text: '', bytes: 0, truncated: false };
+  var reader = res.body.getReader();
+  var decoder = new TextDecoder();
+  var text = '';
+  var bytes = 0;
+  for (;;) {
+    var step = await reader.read();
+    if (step.done) return { text: text + decoder.decode(), bytes: bytes, truncated: false };
+    var room = maxBytes - bytes;
+    if (step.value.byteLength > room) {
+      reader.cancel().catch(function () {});
+      return { text: text + decoder.decode(step.value.subarray(0, room)), bytes: maxBytes, truncated: true };
+    }
+    bytes += step.value.byteLength;
+    text += decoder.decode(step.value, { stream: true });
   }
 }
 
@@ -178,6 +209,8 @@ export function successEnvelope(req, colo, r) {
         ttfbMs: r.ttfbMs,
         bodyMs: r.bodyMs,
         totalMs: r.ms,
+        bodyBytes: r.bodyBytes,
+        truncated: r.truncated,
         attempts: r.attempt,
       }, baseDiag(req, colo, r.attemptLog)),
     },
@@ -200,6 +233,8 @@ export function failureEnvelope(req, colo, r) {
         ttfbMs: null,
         bodyMs: null,
         totalMs: err.ms,
+        bodyBytes: null,
+        truncated: false,
         attempts: r.attemptLog.length,
       }, baseDiag(req, colo, r.attemptLog)),
     },
@@ -212,6 +247,7 @@ export function failureEnvelope(req, colo, r) {
  * @param {Function} env.fetch          fetch implementation (global fetch in every host)
  * @param {string[]} [env.allowedOrigins] target hostnames allowed; empty = any
  * @param {string|null} [env.colo]      where this proxy instance runs (diagnostics only)
+ * @param {number} [env.maxResponseBytes] body cap; defaults to DEFAULT_MAX_RESPONSE_BYTES
  */
 export async function proxyMcp(payload, env) {
   env = env || {};
@@ -222,7 +258,7 @@ export async function proxyMcp(payload, env) {
   req.target = target.url;
   req.outHeaders = buildOutHeaders(req.headers, req.method, req.purpose);
   var doFetch = env.fetch || fetch;
-  var result = await runAttempts(req.retries + 1, function () { return attemptOnce(req, doFetch); });
+  var result = await runAttempts(req.retries + 1, function () { return attemptOnce(req, doFetch, env.maxResponseBytes); });
   var colo = env.colo || null;
   return result.failure ? failureEnvelope(req, colo, result) : successEnvelope(req, colo, result);
 }
