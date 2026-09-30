@@ -45,15 +45,48 @@ function badRequest(error) {
   return { status: 400, json: { error: error } };
 }
 
+// JSON-RPC methods safe to send twice: they read, and change nothing on the server
+var IDEMPOTENT_METHODS = ['server/discover', 'ping', 'resources/read', 'prompts/get'];
+
+function rpcMethod(body) {
+  try {
+    var msg = JSON.parse(body);
+    return msg && typeof msg.method === 'string' ? msg.method : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether a failed attempt may be sent again. OAuth calls: only GET (discovery),
+ * since a token request spends its code. MCP: requests that only read.
+ */
+export function isIdempotent(payload) {
+  var method = String(payload.method || 'POST').toUpperCase();
+  if (payload.purpose === 'oauth') return method === 'GET' || method === 'HEAD';
+  var rpc = rpcMethod(payload.body);
+  var isRequest = rpc !== null && requestId(payload.body) !== null;
+  return isRequest && (IDEMPOTENT_METHODS.indexOf(rpc) !== -1 || /\/list$/.test(rpc));
+}
+
+function retriesSkipped(payload, retries) {
+  if (retries === 0 || isIdempotent(payload)) return null;
+  var rpc = rpcMethod(payload.body);
+  return 'not retried: ' + (rpc ? rpc + ' may change state on the server' : 'only read-only requests are retried');
+}
+
 /** Reads the UI's payload into a request with defaults and clamped limits. */
 function readRequest(payload) {
+  var retries = clampInt(payload.retries, 0, MAX_RETRIES, 0);
+  var skipped = retriesSkipped(payload, retries);
   return {
     url: payload.url,
     method: String(payload.method || 'POST').toUpperCase(),
     headers: payload.headers || {},
     body: payload.body || null,
     timeoutMs: clampInt(payload.timeoutMs, 500, MAX_TIMEOUT_MS, DEFAULT_TIMEOUT_MS),
-    retries: clampInt(payload.retries, 0, MAX_RETRIES, 0),
+    retries: skipped ? 0 : retries,
+    retriesSkipped: skipped,
     purpose: payload.purpose === 'oauth' ? 'oauth' : 'mcp',
   };
 }
@@ -256,7 +289,7 @@ export async function runAttempts(maxAttempts, attempt, wait) {
 }
 
 function baseDiag(req, colo, attemptLog) {
-  return { attemptLog: attemptLog, colo: colo, targetHost: req.target.hostname, timeoutMs: req.timeoutMs };
+  return { attemptLog: attemptLog, colo: colo, targetHost: req.target.hostname, timeoutMs: req.timeoutMs, retriesSkipped: req.retriesSkipped };
 }
 
 export function successEnvelope(req, colo, r) {

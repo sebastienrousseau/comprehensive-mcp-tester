@@ -387,6 +387,11 @@ describe('request log', () => {
     c.addLog('res', 'tools/list', { body: {} }, 200, {}, { diag: { ...diag, truncated: false, bodyBytes: 120 } });
     assert.doesNotMatch(c.renderLog(), /truncated/i, 'a whole body is not called truncated');
   });
+
+  test('the Log says why a request was not retried', () => {
+    c.addLog('err', 'tools/call', { body: {} }, null, {}, { diag: { ok: false, attempts: 1, retriesSkipped: 'not retried: tools/call may change state on the server' } });
+    assert.match(c.renderLog(), /retries: +not retried: tools\/call may change state on the server/);
+  });
 });
 
 describe('redirect fallback', () => {

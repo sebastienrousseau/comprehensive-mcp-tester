@@ -71,6 +71,7 @@ function renderLogTiming(e) {
     ['proxy overhead', timingOrNull(e.overheadMs)],
     ['body size', size],
     ['attempts', d.attempts || null],
+    ['retries', d.retriesSkipped || null],
     ['worker colo', d.colo || null],
     ['error type', d.errorType || null]
   ];

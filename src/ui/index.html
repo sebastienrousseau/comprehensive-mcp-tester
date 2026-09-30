@@ -53,7 +53,7 @@
   </div>
   <div class="control-group">
     Retries
-    <select id="retriesSelect" title="Retries are off by default so you see real failures">
+    <select id="retriesSelect" title="Retries are off by default so you see real failures. Only read-only requests (lists, reads, ping, discovery) are retried; tools/call never is.">
       <option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option>
     </select>
   </div>

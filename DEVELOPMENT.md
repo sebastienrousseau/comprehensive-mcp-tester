@@ -30,7 +30,7 @@ Edit `src/`, never `dist/`: `dist/` is generated and ignored by git. How the pie
 
 `npm test` runs every suite with Node's built-in runner:
 
-- **proxy**: the core against a mock server. Covers timing, timeouts, retries with backoff, network failures, Accept repair, header filtering and the allowlist. It also covers the mock server's scenario registry: discovery, the original paths as aliases, parallel instances, the delay knob, and that each violation scenario breaks the rule it names.
+- **proxy**: the core against a mock server. Covers timing, timeouts, retries with backoff (read-only requests only), the 8 MB response cap, SSE responses on held-open streams, network failures, Accept repair, header filtering and the allowlist. It also covers the mock server's scenario registry: discovery, the original paths as aliases, parallel instances, the delay knob, and that each violation scenario breaks the rule it names.
 - **hosts**: both Cloudflare bundles, executed as built, and the local server, including its security checks.
 - **ui-logic**: the shipped client JS in a VM. Covers the percentile and uptime maths, flap streaks, schema-based request suggestions and JSON-RPC ids.
 - **e2e**: Chromium drives the real UI through the local server to the mock MCP server. Covers both protocol eras, OAuth sign-in (pop-up and redirect), the `iss` mix-up rejection, client credentials, connect, filter, suggested requests, form and JSON execution, error responses, resources, prompts, log, diagnostics, theme, saved servers, timeouts and phone-width layout.

@@ -175,7 +175,7 @@ Every sign-in step appears in a trace (ok / warning / failed) and in the Log, be
 | `PORT`, `HOST` | local | Defaults `8787`, `127.0.0.1`. |
 | `MCP_TESTER_ALLOWED_HOSTS` | local | Extra `Host` header values to accept when serving under a hostname. |
 
-Request timeout and retries are set in the UI. Retries default to 0, so real failures stay visible.
+Request timeout and retries are set in the UI. Retries default to 0, so real failures stay visible, and apply only to requests that read (lists, `resources/read`, `prompts/get`, `ping`, discovery): a `tools/call` is never sent twice.
 
 ---
 
@@ -238,7 +238,7 @@ Report vulnerabilities privately through GitHub, as [`SECURITY.md`](SECURITY.md)
 - **Saved headers are stored in the browser.** The Headers dialog saves its values in `localStorage`. Use Auth for tokens and keys.
 - **A Content-Security-Policy on the page**, from both hosts: it may only talk to its own origin (`connect-src 'self'`), so an injected script could not send tokens elsewhere, and it cannot be framed. The one external origin allowed is Google Fonts, for the stylesheet's fonts.
 - **OAuth checks are enforced, not just reported:** issuer mismatch, the `iss` in the authorization response, `state`, and PKCE S256 support.
-**Resource limits.** Every proxied request has a timeout, clamped to 500 ms to 120 s (default 15 s), and at most 3 retries (default 0). The local server rejects a request body over 1 MB with 413. Diagnostics keep the latest 500 samples and the Log the latest 1000 entries, so a monitor left running for days stays bounded.
+**Resource limits.** Every proxied request has a timeout, clamped to 500 ms to 120 s (default 15 s), and at most 3 retries (default 0, read-only requests only). A server's response is read up to 8 MB and cut there. The local server rejects a request body over 1 MB with 413. Diagnostics keep the latest 500 samples and the Log the latest 1000 entries, so a monitor left running for days stays bounded.
 
 **Testing and fuzzing.** The security invariants above are regression-tested: both hosts' origin checks and the local server's host and content-type checks in the hosts suite, the OAuth `iss` mix-up and PKCE end to end against the mock authorization server, and the https-only authorization endpoint in the UI-logic suite. There are no fuzz targets yet; the parsers most worth fuzzing are the SSE and JSON response handling.
 

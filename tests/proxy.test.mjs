@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { proxyMcp, parseAllowedOrigins, clampInt, validateTarget, buildOutHeaders, runAttempts, attemptOnce, DEFAULT_MAX_RESPONSE_BYTES } from '../src/core/proxy.js';
+import { proxyMcp, parseAllowedOrigins, clampInt, validateTarget, buildOutHeaders, runAttempts, attemptOnce, DEFAULT_MAX_RESPONSE_BYTES, isIdempotent } from '../src/core/proxy.js';
 import { startMockServer } from './fixtures/mock-mcp-server.mjs';
 
 let mock;
@@ -56,7 +56,7 @@ test('timeout: classified, aborted near the deadline, readable JSON-RPC error bo
 
 test('retries: 3 attempts logged, with backoff between them', async () => {
   const t0 = Date.now();
-  const { json } = await call(init(mock.base + '/hang', { timeoutMs: 500, retries: 2 }));
+  const { json } = await call(init(mock.base + '/hang', { timeoutMs: 500, retries: 2, body: JSON.stringify({ jsonrpc: '2.0', method: 'tools/list', id: 1 }) }));
   assert.equal(json.diag.attempts, 3);
   assert.deepEqual(json.diag.attemptLog.map((a) => a.outcome), ['timeout', 'timeout', 'timeout']);
   assert.ok(Date.now() - t0 >= 1500 + 250 + 500, 'three timeouts plus backoff');
@@ -140,7 +140,7 @@ test('purpose "oauth": no MCP Accept or Content-Type repair; defaults to Accept:
 // ── The envelope contract, pinned before the pipeline split (#82) ─────────
 
 const keys = (o) => Object.keys(o).sort();
-const DIAG_KEYS = ['attemptLog', 'attempts', 'bodyBytes', 'bodyMs', 'colo', 'errorDetail', 'errorType', 'ok', 'targetHost', 'timeoutMs', 'totalMs', 'truncated', 'ttfbMs'];
+const DIAG_KEYS = ['attemptLog', 'attempts', 'bodyBytes', 'bodyMs', 'colo', 'errorDetail', 'errorType', 'ok', 'retriesSkipped', 'targetHost', 'timeoutMs', 'totalMs', 'truncated', 'ttfbMs'];
 
 test('AC-PROXY-PIPE-01: behaviour unchanged', async () => {
   const fixed = (status, body, headers) => async () => new Response(body, { status, headers });
@@ -154,7 +154,7 @@ test('AC-PROXY-PIPE-01: behaviour unchanged', async () => {
   assert.deepEqual(d.attemptLog.map((a) => [a.n, a.outcome, a.status]), [[1, 'response', 201]]);
 
   const refused = async () => { throw new TypeError('connect ECONNREFUSED'); };
-  const bad = await proxyMcp({ url: 'https://mcp.example/mcp', retries: 1 }, { fetch: refused });
+  const bad = await proxyMcp({ url: 'https://mcp.example/mcp', retries: 1, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) }, { fetch: refused });
   assert.equal(bad.status, 200);
   assert.deepEqual(keys(bad.json), ['body', 'diag', 'headers', 'status']);
   assert.deepEqual(keys(bad.json.diag), DIAG_KEYS);
@@ -339,4 +339,43 @@ test('SSE matching: line endings, data with or without a space, split and multi-
   const text = sseOrigin(['data: {"jsonrpc":"2.0","id":"a","result":{}}\n\n']);
   const str = await proxyMcp({ url: 'https://a.example/mcp', timeoutMs: 1000, body: rpc('tools/list', 'a') }, { fetch: text.fetchImpl });
   assert.equal(str.json.diag.ok, true, 'string ids match');
+});
+
+// ── Retries only for idempotent requests (#85) ────────────────────────────
+
+test('AC-PROXY-RETRY-01: no retry of tools/call', async () => {
+  let hits = 0;
+  const hang = (u, init) => { hits++; return new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(new DOMException('x', 'AbortError')))); };
+  const body = JSON.stringify({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'x', arguments: {} } });
+  const { json } = await proxyMcp({ url: 'https://a.example/mcp', timeoutMs: 500, retries: 3, body }, { fetch: hang });
+  assert.equal(hits, 1);
+  assert.equal(json.diag.errorType, 'timeout');
+  assert.equal(json.diag.attempts, 1);
+  assert.match(json.diag.retriesSkipped, /tools\/call/);
+  // And against the real /hang, the request reaches the socket once
+  const t0 = Date.now();
+  const real = await call({ url: mock.base + '/hang', timeoutMs: 500, retries: 3, body });
+  assert.equal(real.json.diag.attempts, 1);
+  assert.ok(Date.now() - t0 < 1000, 'no backoff, no second attempt');
+});
+
+test('AC-PROXY-RETRY-02: lists still retry', async () => {
+  let hits = 0;
+  const refuse = async () => { hits++; throw new TypeError('fetch failed'); };
+  const { json } = await proxyMcp({ url: 'https://a.example/mcp', retries: 2, body: rpc('tools/list', 1) }, { fetch: refuse });
+  assert.equal(hits, 3);
+  assert.equal(json.diag.attempts, 3);
+  assert.equal(json.diag.retriesSkipped, null);
+});
+
+test('isIdempotent: reads, lists, discovery and ping; never calls, notifications or token requests', () => {
+  const p = (method, extra) => ({ body: method ? rpc(method, 1) : null, ...extra });
+  for (const m of ['server/discover', 'tools/list', 'resources/list', 'resources/templates/list', 'prompts/list', 'ping', 'resources/read', 'prompts/get']) {
+    assert.equal(isIdempotent(p(m)), true, m);
+  }
+  for (const m of ['tools/call', 'initialize', 'completion/complete', 'logging/setLevel']) assert.equal(isIdempotent(p(m)), false, m);
+  assert.equal(isIdempotent({ body: rpc('notifications/initialized') }), false);
+  assert.equal(isIdempotent({ body: 'not json' }), false);
+  assert.equal(isIdempotent({ method: 'GET', purpose: 'oauth' }), true, 'OAuth discovery is a GET');
+  assert.equal(isIdempotent({ method: 'POST', purpose: 'oauth', body: 'grant_type=authorization_code' }), false, 'a code is single-use');
 });
