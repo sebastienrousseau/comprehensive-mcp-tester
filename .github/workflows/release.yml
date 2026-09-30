@@ -31,6 +31,7 @@ jobs:
   release:
     name: ${{ github.event_name == 'push' && 'Release' || 'Release (dry run)' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write      # create the release; unused in a dry run
       id-token: write      # sign the attestations with Sigstore
