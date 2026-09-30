@@ -101,6 +101,23 @@ describe('computeStats edge cases', () => {
   });
 });
 
+describe('OAuth callback query', () => {
+  test('only the authorization response parameters are kept', () => {
+    const q = c.parseQuery('?__proto__=x&constructor=y&toString=z&extra=1&state=s&code=c&iss=i&error=e&error_description=d&error_uri=u');
+    assert.deepEqual(Object.keys(q), ['state', 'code', 'iss', 'error', 'error_description', 'error_uri']);
+    assert.equal(Object.getPrototypeOf(q), Object.getPrototypeOf(c.parseQuery('')), 'the prototype is untouched');
+    assert.equal(typeof q.toString, 'function');
+  });
+});
+
+describe('diagnostics report', () => {
+  test('a Markdown table cell escapes backslashes before pipes', () => {
+    assert.equal(c.mdCell('a|b'), 'a\\|b');
+    assert.equal(c.mdCell('ends with \\|'), 'ends with \\\\\\|', 'a trailing backslash cannot unescape the pipe');
+    assert.equal(c.mdCell(404), '404');
+  });
+});
+
 describe('fmtMs', () => {
   test('null → em dash', () => assert.equal(c.fmtMs(null), '—'));
   test('850 → 850ms', () => assert.equal(c.fmtMs(850), '850ms'));
@@ -303,7 +320,7 @@ describe('authorization helpers', () => {
   test('form encoding round-trips and skips empty values', () => {
     const enc = c.formEncode({ a: 'x y', b: 'https://h/p?q=1', skip: '', none: null });
     assert.equal(enc, 'a=x%20y&b=https%3A%2F%2Fh%2Fp%3Fq%3D1');
-    assert.deepEqual({ ...c.parseQuery('?a=x+y&b=https%3A%2F%2Fh') }, { a: 'x y', b: 'https://h' });
+    assert.deepEqual({ ...c.parseQuery('?code=x+y&iss=https%3A%2F%2Fh&&state=') }, { code: 'x y', iss: 'https://h', state: '' });
   });
 
   test('credentials are only sent to the server they were set up for', () => {
