@@ -8,6 +8,7 @@ Releases start at 0.0.1 and each one increments the version by exactly 0.0.1 ([p
 
 ### Added
 
+- `npm run version:bump` and `npm run version:check`: the next version (exactly +0.0.1) set everywhere at once, the changelog's Unreleased section dated, and CI rejecting any other version. The UI header and the first line of the built Worker show the version ([#7](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/7)).
 - A Content-Security-Policy on the page from both hosts: requests only to its own origin, no framing, no rebasing or posting forms elsewhere ([#41](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/41)).
 - CodeQL, OpenSSF Scorecard, dependency review, `npm audit` and registry-signature checks in CI, with every GitHub Action pinned by commit; a devcontainer checked in CI to boot to a green test suite; a pre-commit configuration; `AGENTS.md` (which `CLAUDE.md` now imports), `GOVERNANCE.md`, `SUPPORT.md` and `CITATION.cff`. Releases also ship their Sigstore provenance bundle ([#56](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/56)).
 - `docs/packaging.md` for anyone repackaging the tool, and a CI check that the build is reproducible: the same commit gives byte-identical files ([#55](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/55)).

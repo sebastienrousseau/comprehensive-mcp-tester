@@ -16,6 +16,8 @@
     "dev": "node --watch src/hosts/node-server.js",
     "mock": "node tests/fixtures/mock-mcp-server.mjs",
     "test": "node --test",
+    "version:bump": "node scripts/version.mjs bump",
+    "version:check": "node scripts/version.mjs check",
     "test:trace": "node scripts/check-traceability.mjs",
     "check:readme": "node scripts/check-readme.mjs",
     "check:links": "node scripts/check-links.mjs",
