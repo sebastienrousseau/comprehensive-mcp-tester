@@ -30,7 +30,7 @@ help:
 	@echo "make versions   every version reference agrees (package.json, lockfile, the UI)"
 	@echo "make check      test + trace + readme + links + versions + build: the offline CI gate"
 	@echo "make docs       the user manual in build/manual-site (needs: pip install -r docs/manual/requirements.txt)"
-	@echo "make lint       markdownlint and codespell (fetches markdownlint-cli2 with npx)"
+	@echo "make lint       ESLint (npm ci --prefix tools/lint first), markdownlint and codespell"
 	@echo "make dev        local server that restarts on changes"
 	@echo "make start      local server on http://127.0.0.1:8787"
 	@echo "make mock       mock MCP server on http://127.0.0.1:8788/mcp"
@@ -65,6 +65,7 @@ versions:
 check: test trace readme links versions build
 
 lint: readme
+	@$(NPM) run lint
 	@npx --yes markdownlint-cli2 "**/*.md"
 	@if command -v codespell >/dev/null 2>&1; then codespell; else echo "codespell not installed (pip install codespell); spelling not checked"; fi
 

@@ -19,6 +19,7 @@
     "test:ci": "node scripts/run-ci-tests.mjs",
     "version:bump": "node scripts/version.mjs bump",
     "version:check": "node scripts/version.mjs check",
+    "lint": "node tools/lint/run.mjs",
     "test:trace": "node scripts/check-traceability.mjs",
     "check:readme": "node scripts/check-readme.mjs",
     "check:links": "node scripts/check-links.mjs",
