@@ -74,7 +74,7 @@ After any upstream change, re-run the pull-request description audit against `~/
 1. Hygiene (`~/Code/AGENTS.md` section 0) on the fork: Dependabot, code scanning, secret scanning, `npm audit` for the app and `tools/lint`, `main` CI.
 2. Read the upstream pull requests' state; act per [A.2](#a2-when-upstream-acts).
 3. If the licence is settled: `npm run version:bump`, merge #66, tag `v0.0.1` through the release preflight (`DEVELOPMENT.md`, Releases).
-4. Open `feat/v0.0.2` and start [Milestone 1](#d1-milestone-1-stabilisation-and-security-002).
+4. Open `feat/v0.0.2` and start the [release train](#d0-release-train) at 0.0.2.
 
 ---
 
@@ -116,24 +116,24 @@ Security references for the category: the [OWASP MCP Top 10](https://owasp.org/p
 
 | # | Capability | Today | Planned in |
 | :---: | :--- | :--- | :--- |
-| 1 | Every spec version, with the fallback visible | Partial (2026-07-28 and 2025-11-25) | M1 (version picker) |
-| 2 | 2026-07-28 protocol checks (headers, `resultType`, `ttlMs`, error codes, ordering) | Engine only, one rule | M2 |
-| 3 | MRTR (`input_required` / `inputResponses`) | No | M3 |
-| 4 | `subscriptions/listen` | No | M3 |
-| 5 | Tasks extension viewer; MCP Apps rendering | No | M3 (tasks), later (Apps) |
-| 6 | Compliance aligned with the official conformance suite IDs, JUnit / `checks.json` output | No | M2 |
-| 7 | Headless CLI and GitHub Action with baselines | No | M3 |
-| 8 | Full OAuth debugger: CIMD first, `iss`, issuer binding, refresh, step-up | Most; refresh and step-up open (#44, #45) | M2 |
-| 9 | EMA / ID-JAG; DPoP (labelled not final) | No | M4 |
-| 10 | Security lint of tool, prompt and resource descriptions; rug-pull hashes | No | M3 |
-| 11 | Optional model-in-the-loop evals | No | Roadmap 8 (#30) |
-| 12 | Schema quality and result-shape checks | No | M2 |
-| 13 | `server/discover`, Server Card and registry `server.json` validation | Discover only | M2 (discover), M3 (cards, `server.json`) |
-| 14 | OpenTelemetry: `traceparent` in `_meta`, spans | No | M2 |
-| 15 | Replay, cURL / HAR export, collections, variables | No | Roadmap 5 (#19) |
-| 16 | stdio through the local host | No (ADR 0003 decided Streamable HTTP only) | Decision E4 |
-| 17 | Enterprise deployment: offline, corporate proxy and CA, no plaintext secrets, audit log | Partial | M1, M4 |
-| 18 | Signed releases, SLSA provenance, SBOM, checksums | Built (#64), first release pending | 0.0.1 |
+| 1 | Every spec version, with the fallback visible | Partial (2026-07-28 and 2025-11-25) | 0.0.3 ([#95](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/95)) |
+| 2 | 2026-07-28 protocol checks (headers, `resultType`, `ttlMs`, error codes, ordering) | Engine only, one rule | 0.0.6, 0.0.7 |
+| 3 | MRTR (`input_required` / `inputResponses`) | No | 0.0.12 ([#111](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/111)) |
+| 4 | `subscriptions/listen` | No | 0.0.12 ([#112](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/112)) |
+| 5 | Tasks extension viewer; MCP Apps rendering | No | 0.0.12 ([#113](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/113)); Apps later |
+| 6 | Compliance aligned with the official conformance suite IDs, JUnit / `checks.json` output | No | 0.0.7 ([#105](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/105)) |
+| 7 | Headless CLI and GitHub Action with baselines | No | 0.0.13 ([#115](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/115)) |
+| 8 | Full OAuth debugger: CIMD first, `iss`, issuer binding, refresh, step-up | Most; refresh and step-up open (#44, #45) | 0.0.7 (#44, #45) |
+| 9 | EMA / ID-JAG; DPoP (labelled not final) | No | 0.0.16 ([#117](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/117)) |
+| 10 | Security lint of tool, prompt and resource descriptions; rug-pull hashes | No | 0.0.14 ([#116](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/116)) |
+| 11 | Optional model-in-the-loop evals | No | 0.0.18 (#30) |
+| 12 | Schema quality and result-shape checks | No | 0.0.7 (#11) |
+| 13 | `server/discover`, Server Card and registry `server.json` validation | Discover only | 0.0.6 (discover); backlog ([#121](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/121)) |
+| 14 | OpenTelemetry: `traceparent` in `_meta`, spans | No | 0.0.6 ([#104](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/104)) |
+| 15 | Replay, cURL / HAR export, collections, variables | No | 0.0.9 to 0.0.11 (#19) |
+| 16 | stdio through the local host | No (ADR 0003 decided Streamable HTTP only) | Backlog ([#120](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/120)) |
+| 17 | Enterprise deployment: offline, corporate proxy and CA, no plaintext secrets, audit log | Partial | 0.0.2 to 0.0.5; 0.0.16 |
+| 18 | Signed releases, SLSA provenance, SBOM, checksums | Built (#64), first release pending | 0.0.1 ([#80](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/80)) |
 
 ---
 
@@ -235,7 +235,7 @@ Artifact size is not a problem: the Worker is far below Cloudflare's script-size
 
 The browser holds live credentials for servers inside company networks, and the proxy fetches on its behalf from a public edge or a loopback port. The trust boundaries are: the page (and anything injected into it), `/proxy`, the target servers and authorization servers (untrusted), and the operator's configuration.
 
-**Held privately.** Eight findings (SEC-P1 to SEC-P8) concern the proxy's target policy, the public Worker's default exposure, the reach of the Content-Security-Policy, where custom headers are sent and stored, scheme checks on discovered OAuth endpoints, the local server on a non-loopback address, and log redaction. Four are rated High, and one was reproduced. Their detail is held privately by the maintainer until the fork ships the fixes in Milestone 1; after that they go to upstream through private disclosure, per [`SECURITY.md`](../SECURITY.md), not through this page.
+**Held privately.** Eight findings (SEC-P1 to SEC-P8) concern the proxy's target policy, the public Worker's default exposure, the reach of the Content-Security-Policy, where custom headers are sent and stored, scheme checks on discovered OAuth endpoints, the local server on a non-loopback address, and log redaction. Four are rated High, and one was reproduced. Their detail is held privately by the maintainer until the fork ships the fixes in 0.0.2 and 0.0.4; after that they go to upstream through private disclosure, per [`SECURITY.md`](../SECURITY.md), not through this page.
 
 Public findings:
 
@@ -252,7 +252,7 @@ Public findings:
 | SEC-9 | Supply chain: `npm run deploy` runs `npx wrangler` unpinned with deploy credentials; `make lint` runs `npx --yes markdownlint-cli2` unpinned; CI audits only the root lockfile; five workflows keep checkout credentials (`persist-credentials`). | `package.json:27`; `Makefile:69`; `ci.yml:31-32`; workflows | Medium / H |
 | SEC-10 | No licence: a compliance blocker for any adopter (#51). | - | High / H |
 
-Confirmed sound: every server-controlled string that reaches `innerHTML` goes through `esc()` (tool, resource and prompt names, descriptions, schemas, errors, trace, Log, diagnostics); OAuth checks `state`, `iss` (before `error`), issuer equality, PKCE S256 and an https-only authorization endpoint; `postMessage` checks origin and source; the code is removed from history. CodeQL's `js/request-forgery` on the proxy is accepted by design, but only with the Milestone 1 compensating controls in place; record the reason in an ADR when they land.
+Confirmed sound: every server-controlled string that reaches `innerHTML` goes through `esc()` (tool, resource and prompt names, descriptions, schemas, errors, trace, Log, diagnostics); OAuth checks `state`, `iss` (before `error`), issuer equality, PKCE S256 and an https-only authorization endpoint; `postMessage` checks origin and source; the code is removed from history. CodeQL's `js/request-forgery` on the proxy is accepted by design, but only with the 0.0.2 compensating controls in place; record the reason in an ADR when they land.
 
 ### C.4 Product, developer experience and observability
 
@@ -273,9 +273,35 @@ Working well: `make help`, `make check` as the single gate, a clear message when
 
 Each milestone is one `feat/v<version>` branch and one release pull request, per `~/Code/AGENTS.md` section 3. Work lands as commits on that branch. Every item carries acceptance criteria in `docs/acceptance/v<version>/` and a test titled with each criterion's ID, and it passes `make check` and `npm run lint` with no new baseline entries. Fork first; each change then goes upstream through [A.2](#a2-when-upstream-acts).
 
-The milestone numbers below propose moving roadmap items back by one to make room for stabilisation ([decision E3](#part-e-decisions-for-the-owner)). `ROADMAP.md` changes only once that is agreed.
+### D.0 Release train
 
-### D.1 Milestone 1: stabilisation and security (0.0.2)
+Agreed on 2026-09-30 (decision E3): eighteen small releases, each one +0.0.1 with a single theme. Every version is a [GitHub milestone](https://github.com/sebastienrousseau/comprehensive-mcp-tester/milestones) whose description tells its story and exit criteria, and every piece of work is an issue in the repository's user-story format, with acceptance criteria that become regression tests. Security fixes held privately are tracked outside the public issue list until they ship. The phases below (D.1 to D.4) group the versions and hold the designs.
+
+| Version | Theme | Issues |
+| :--- | :--- | :--- |
+| 0.0.1 | Foundation release | #51, #3, #46, [#80](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/80) |
+| 0.0.2 | Safe proxy | [#82](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/82) to [#88](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/88), private SEC-P1, P2, P6, P7 |
+| 0.0.3 | Correct client | [#89](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/89) to [#95](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/95) |
+| 0.0.4 | Safe to share | [#96](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/96), [#97](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/97), #71, private SEC-P3, P4, P5, P8, upstream disclosure |
+| 0.0.5 | Operable | [#98](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/98) to [#101](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/101); closes epic [#81](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/81) |
+| 0.0.6 | Compliance live | #10, #13, [#102](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/102) to [#104](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/104) |
+| 0.0.7 | Full compliance | #11, #12, #44, #45, [#105](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/105); closes epic #8 |
+| 0.0.8 | Maintainable client | [#106](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/106) to [#109](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/109) |
+| 0.0.9 | Diagnose faster | #14, #15, #16 |
+| 0.0.10 | Replay and export | #17, #18 |
+| 0.0.11 | Workflows | #20, #21, #22; closes epic #19 |
+| 0.0.12 | Protocol 2026-07-28 complete | [#111](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/111) to [#114](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/114); epic [#110](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/110) |
+| 0.0.13 | Checks in CI | [#115](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/115) |
+| 0.0.14 | Trust | [#116](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/116) |
+| 0.0.15 | Docker | #24, #25; closes epic #23 |
+| 0.0.16 | Enterprise | [#117](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/117) to [#119](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/119) |
+| 0.0.17 | Desktop | #27, #28, #29; closes epic #26 |
+| 0.0.18 | Agent playground | #31 to #34; closes epic #30 |
+| Backlog | Waiting on a decision or the spec | [#120](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/120) (stdio), [#121](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/121) (Server Cards) |
+
+The issue numbers in the phases below refer to these issues; the plan IDs (PROTO-, PERF-, SEC-, DX-, ARCH-) map to them through each issue's Technical notes.
+
+### D.1 Phase 1: stabilisation and security (0.0.2 to 0.0.5)
 
 Goal: nothing a user or operator relies on is wrong, unbounded or exposed.
 
@@ -357,7 +383,7 @@ Validation: one test per finding, written to fail first; an e2e test that no req
 
 Validation: host tests for one log line per call with no header values, `/healthz`, SIGTERM closing within the window, and config validation errors.
 
-### D.2 Milestone 2: compliance and refactoring (0.0.3)
+### D.2 Phase 2: compliance and refactoring (0.0.6 to 0.0.8)
 
 Roadmap item 4 (#8), rebuilt on an exchange recorder.
 
@@ -372,7 +398,7 @@ Roadmap item 4 (#8), rebuilt on an exchange recorder.
 
 Validation: every rule's scenario fails it; the complexity baseline shrinks by at least the five named offenders; coverage reports `src/ui/js`.
 
-### D.3 Milestone 3: differentiating features (0.0.4 onward)
+### D.3 Phase 3: differentiating features (0.0.9 to 0.0.15)
 
 In the order that adds most for users of a testing tool:
 
@@ -383,7 +409,7 @@ In the order that adds most for users of a testing tool:
 5. **Discovery validation**: Server Card and registry `server.json` against their schemas, once the Server Card path is final.
 6. **Docker image** (roadmap 6, #23 to #25): non-root, read-only file system, `HEALTHCHECK` on `/healthz`, `MCP_TESTER_TOKEN` required when bound to `0.0.0.0`, multi-arch on GHCR with an SBOM and provenance.
 
-### D.4 Milestone 4: enterprise and platform
+### D.4 Phase 4: enterprise and platform (0.0.16 to 0.0.18)
 
 - EMA / ID-JAG sign-in, and DPoP labelled as not yet final in the spec.
 - Corporate HTTP proxy and custom CA support in the Node host.
@@ -391,7 +417,7 @@ In the order that adds most for users of a testing tool:
 - Signed desktop builds (roadmap 7, #26) and the agent playground (roadmap 8, #30), unchanged in scope.
 - stdio through the local host, if decision E4 reopens ADR 0003.
 
-### D.5 Standing validation for every milestone
+### D.5 Standing validation for every release
 
 - `make check`, `npm run lint` (baseline only shrinks), `make docs`, pre-commit, actionlint; CodeQL clean; the release preflight and the post-publish audit for each tag.
 - Every acceptance criterion traced to a test that was seen to fail first.
@@ -404,8 +430,8 @@ In the order that adds most for users of a testing tool:
 | # | Decision | Recommendation |
 | :---: | :--- | :--- |
 | E1 | Licence (#51), with upstream's author | Needed before anything ships; everything else in A.3 waits on it. |
-| E2 | Commercial intent: whether this stays a community tool, or becomes the open core of something (for example a hosted compliance service, the CI Action, enterprise auth and audit logs). The pillars for investment and returns are not defined. | Decide before Milestone 3; it changes whether items 3 to 5 of D.3 and all of D.4 are built open or kept behind an interface. Nothing in Milestones 1 and 2 depends on it. |
-| E3 | Insert stabilisation as 0.0.2 and move roadmap items 4 to 8 back one milestone | Yes: the compliance report needs the exchange recorder and the proxy fixes, and the security items should not wait. |
+| E2 | Commercial intent: whether this stays a community tool, or becomes the open core of something (for example a hosted compliance service, the CI Action, enterprise auth and audit logs). The pillars for investment and returns are not defined. | Decide before 0.0.13; it changes whether the CI command, the trust checks and all of D.4 are built open or kept behind an interface. Nothing before 0.0.13 depends on it. |
+| E3 | Insert stabilisation as 0.0.2 and move roadmap items 4 to 8 back one milestone | **Decided 2026-09-30:** yes, as the release train in [D.0](#d0-release-train). |
 | E4 | stdio support, which ADR 0003 ruled out for a hosted tool | Revisit only for the local host, and only after the CLI exists. |
 | E5 | Fonts (#71): self-host or use system fonts | System fonts: removes the only third-party request and a CSP exception. |
 | E6 | Where compliance grading runs (D.2) | A `/compliance` endpoint on both hosts. |
