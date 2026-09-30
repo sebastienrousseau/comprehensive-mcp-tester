@@ -12,7 +12,8 @@ function proxyFetch(targetUrl, options) {
       timeoutMs: getTimeout(),
       retries: getRetries(),
       purpose: options.purpose
-    })
+    }),
+    signal: options.signal
   }).then(function(res) {
     return res.json().then(function(env) {
       var clientMs = Date.now() - clientStart;
@@ -190,7 +191,19 @@ function probeOf(res, data, isErr, method, source) {
   };
 }
 
+function isAbort(e) {
+  return !!e && e.name === 'AbortError';
+}
+
+/* Cancelled by the user: logged, but not a server failure, so no probe is recorded */
+function cancelledResult(method) {
+  addLog('err', method, { body: { error: { message: 'Cancelled by the user' } } }, null, null, null);
+  return { data: { cancelled: true, error: { message: 'Cancelled by the user' } }, status: null, diag: null, clientMs: null,
+           isErr: true, transportOk: false, cancelled: true };
+}
+
 function handleSendFailure(e, method, source, gen) {
+  if (isAbort(e)) return cancelledResult(method);
   addLog('err', method, { body: { error: e.message } }, null, null, null);
   if (isStale(gen)) return staleResult();
   recordProbe({
@@ -202,12 +215,12 @@ function handleSendFailure(e, method, source, gen) {
   return { data: { error: { message: e.message } }, status: null, diag: null, clientMs: null, isErr: true, transportOk: false };
 }
 
-function sendBody(body, source) {
+function sendBody(body, source, signal) {
   var method = body.method || 'raw';
   var gen = state.generation;
   applyModernMeta(body);
   addLog('req', method, { body: body }, null, null, null);
-  return proxyFetch(state.serverUrl, { method: 'POST', headers: requestHeaders(body), body: JSON.stringify(body) })
+  return proxyFetch(state.serverUrl, { method: 'POST', headers: requestHeaders(body), body: JSON.stringify(body), signal: signal })
     .then(function(res) { return handleResponse(res, method, source, gen); })
     .catch(function(e) { return handleSendFailure(e, method, source, gen); });
 }

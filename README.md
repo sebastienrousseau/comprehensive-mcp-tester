@@ -175,7 +175,7 @@ Every sign-in step appears in a trace (ok / warning / failed) and in the Log, be
 | `PORT`, `HOST` | local | Defaults `8787`, `127.0.0.1`. |
 | `MCP_TESTER_ALLOWED_HOSTS` | local | Extra `Host` header values to accept when serving under a hostname. |
 
-Request timeout and retries are set in the UI. Retries default to 0, so real failures stay visible, and apply only to requests that read (lists, `resources/read`, `prompts/get`, `ping`, discovery): a `tools/call` is never sent twice.
+Request timeout and retries are set in the UI. Retries default to 0, so real failures stay visible, and apply only to requests that read (lists, `resources/read`, `prompts/get`, `ping`, discovery): a `tools/call` is never sent twice. A running call has a Cancel button: it frees the UI at once, stops the proxy's request to the server, and sends the server `notifications/cancelled`. On Cloudflare, the Worker can only notice that the browser went away with the `enable_request_signal` compatibility flag: `wrangler.toml` sets it; in the dashboard, add it under the Worker's Settings, Compatibility flags.
 
 ---
 

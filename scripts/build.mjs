@@ -70,7 +70,9 @@ function banner(format) {
         ' * DEPLOY (dashboard, no CLI):',
         ' *   1. dash.cloudflare.com → Workers & Pages → Create → Workers → "Start with Hello World!"',
         ' *   2. Deploy, then "Edit code" → select ALL existing code → delete → paste this file → Deploy',
-        ' *   3. Open https://<name>.<your-subdomain>.workers.dev',
+        ' *   3. Settings → Compatibility flags → add enable_request_signal, so a cancelled request',
+        ' *      also stops the Worker\'s fetch to the server (optional; everything else works without it)',
+        ' *   4. Open https://<name>.<your-subdomain>.workers.dev',
       ]
     : [
         ' * DEPLOY: `npx wrangler deploy` (uses wrangler.toml → main = "dist/worker.mjs")',

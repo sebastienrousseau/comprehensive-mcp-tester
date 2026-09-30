@@ -320,3 +320,66 @@ test('AC-PROXY-HDR-02: Worker never throws', async () => {
   assert.deepEqual(await res.json(), { error: 'Internal error' }, 'no detail leaks to the caller');
   assert.equal(errors.length, 1, 'the detail goes to the Worker log');
 });
+
+// ── Cancellation reaches the origin (#86) ─────────────────────────────────
+
+/** An origin that accepts connections and never answers; records when each socket closes. */
+async function hangingOrigin() {
+  const http = await import('node:http');
+  const closed = [];
+  const server = http.createServer(() => {});
+  server.on('connection', (s) => s.on('close', () => closed.push(Date.now())));
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  return { url: `http://127.0.0.1:${server.address().port}/mcp`, closed, close: () => new Promise((r) => { server.closeAllConnections(); server.close(r); }) };
+}
+
+async function closedWithin(origin, since, ms) {
+  while (Date.now() - since < ms) {
+    if (origin.closed.length) return origin.closed[0] - since;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  return null;
+}
+
+test('AC-PROXY-CANCEL-01: hosts stop the upstream fetch', async () => {
+  const payload = (url) => JSON.stringify({ url, timeoutMs: 60000, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'x' } }) });
+
+  // Local server: the browser's request goes away
+  const origin = await hangingOrigin();
+  const server = createServer({ allowedOrigins: '', allowedHosts: '' });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  try {
+    const client = new AbortController();
+    const res = fetch(`http://127.0.0.1:${server.address().port}/proxy`, { method: 'POST', body: payload(origin.url), headers: { 'Content-Type': 'application/json' }, signal: client.signal });
+    await new Promise((r) => setTimeout(r, 100));
+    client.abort();
+    const abortedAt = Date.now();
+    await res.catch(() => {});
+    const took = await closedWithin(origin, abortedAt, 500);
+    assert.notEqual(took, null, 'local server: the origin socket is still open 500 ms after the client left');
+  } finally {
+    server.closeAllConnections?.();
+    await new Promise((r) => server.close(r));
+    await origin.close();
+  }
+
+  // Worker: request.signal aborts
+  const origin2 = await hangingOrigin();
+  try {
+    let handler;
+    vm.runInContext(build({ write: false }).sw, vm.createContext({
+      addEventListener: (t, fn) => { handler = fn; }, Request, Response, Headers, URL, fetch, AbortController, TextDecoder, setTimeout, clearTimeout, Date, JSON, console,
+    }), { filename: 'worker.js' });
+    const client = new AbortController();
+    const pending = new Promise((resolve) => handler({ request: new Request('https://w.dev/proxy', { method: 'POST', body: payload(origin2.url), signal: client.signal }), respondWith: resolve }));
+    await new Promise((r) => setTimeout(r, 100));
+    client.abort();
+    const abortedAt = Date.now();
+    const took = await closedWithin(origin2, abortedAt, 500);
+    assert.notEqual(took, null, 'Worker: the origin socket is still open 500 ms after the client left');
+    const env = await (await pending).json();
+    assert.equal(env.diag.errorType, 'cancelled');
+  } finally {
+    await origin2.close();
+  }
+});

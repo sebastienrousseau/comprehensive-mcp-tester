@@ -6,7 +6,8 @@ var state = {
   tools: [], resources: [], prompts: [], log: [],
   activeTab: 'tools', expandedItem: null,
   servers: [], activeServerId: null, serverInfo: null,
-  drafts: {}, filters: { tools: '', resources: '', prompts: '' }
+  drafts: {}, filters: { tools: '', resources: '', prompts: '' },
+  running: {}           // draft key → { controller, body, btn, label } while a call is in flight
 };
 
 var diag = {

@@ -392,3 +392,20 @@ test('validateHeaders: RFC 9110 names; no CR, LF or NUL, and nothing Headers wou
   }
   assert.equal(validateHeaders({ 'X-N': 5 }), null, 'numbers are sent as text');
 });
+
+test('cancellation: env.signal aborts the attempt, is classified cancelled, and stops the retries', async () => {
+  let hits = 0;
+  const hang = (u, init) => { hits++; return new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(new DOMException('x', 'AbortError')))); };
+  const client = new AbortController();
+  setTimeout(() => client.abort(), 50);
+  const t0 = Date.now();
+  const { json } = await proxyMcp({ url: 'https://a.example/mcp', timeoutMs: 5000, retries: 3, body: rpc('tools/list', 1) }, { fetch: hang, signal: client.signal });
+  assert.ok(Date.now() - t0 < 500);
+  assert.equal(hits, 1, 'no retry after a cancel');
+  assert.deepEqual([json.diag.errorType, json.diag.errorDetail], ['cancelled', 'Cancelled by the client']);
+  const already = new AbortController();
+  already.abort();
+  const r = await proxyMcp({ url: 'https://a.example/mcp', body: rpc('tools/list', 1) }, { fetch: hang, signal: already.signal });
+  assert.equal(r.json.diag.errorType, 'cancelled');
+  assert.equal(hits, 1, 'an already-cancelled request is never sent');
+});

@@ -76,6 +76,35 @@ function readBody(req) {
   });
 }
 
+/** POST /proxy: same-origin JSON only, then proxyMcp(); aborted if the browser goes away */
+async function serveProxy(req, res, hostHeader, ctx) {
+  const origin = req.headers.origin;
+  if (origin && origin !== 'http://' + hostHeader && origin !== 'https://' + hostHeader) {
+    return sendJson(res, 403, { error: 'Cross-origin requests to the local proxy are not allowed' });
+  }
+  if (!String(req.headers['content-type'] || '').toLowerCase().includes('application/json')) {
+    return sendJson(res, 415, { error: 'Content-Type must be application/json' });
+  }
+  let raw;
+  try { raw = await readBody(req); }
+  catch (e) {
+    if (e.code === 413) {
+      res.on('finish', () => req.destroy());
+      return send(res, 413, { 'Content-Type': 'application/json', Connection: 'close' },
+        JSON.stringify({ error: 'Request body too large (limit 1 MB)' }));
+    }
+    return sendJson(res, 400, { error: 'Could not read request body' });
+  }
+  let payload;
+  try { payload = JSON.parse(raw); }
+  catch { return sendJson(res, 400, { error: 'Invalid JSON in proxy request body' }); }
+  // The browser went away (Cancel, reload, closed tab): stop the upstream fetch too
+  const gone = new AbortController();
+  res.on('close', () => { if (!res.writableFinished) gone.abort(); });
+  const result = await proxyMcp(payload, { fetch: ctx.fetch, allowedOrigins: ctx.allowedOrigins, colo: 'local', signal: gone.signal });
+  return sendJson(res, result.status, result.json);
+}
+
 /**
  * @param {object} [opts]
  * @param {string} [opts.allowedOrigins]  comma list of target hosts (defaults to env ALLOWED_ORIGINS)
@@ -111,30 +140,7 @@ export function createServer(opts = {}) {
         return sendJson(res, 200, clientMetadataDocument('http://' + hostHeader));
       }
 
-      if (req.method === 'POST' && url.pathname === '/proxy') {
-        const origin = req.headers.origin;
-        if (origin && origin !== 'http://' + hostHeader && origin !== 'https://' + hostHeader) {
-          return sendJson(res, 403, { error: 'Cross-origin requests to the local proxy are not allowed' });
-        }
-        if (!String(req.headers['content-type'] || '').toLowerCase().includes('application/json')) {
-          return sendJson(res, 415, { error: 'Content-Type must be application/json' });
-        }
-        let raw;
-        try { raw = await readBody(req); }
-        catch (e) {
-          if (e.code === 413) {
-            res.on('finish', () => req.destroy());
-            return send(res, 413, { 'Content-Type': 'application/json', Connection: 'close' },
-              JSON.stringify({ error: 'Request body too large (limit 1 MB)' }));
-          }
-          return sendJson(res, 400, { error: 'Could not read request body' });
-        }
-        let payload;
-        try { payload = JSON.parse(raw); }
-        catch { return sendJson(res, 400, { error: 'Invalid JSON in proxy request body' }); }
-        const result = await proxyMcp(payload, { fetch: doFetch, allowedOrigins, colo: 'local' });
-        return sendJson(res, result.status, result.json);
-      }
+      if (req.method === 'POST' && url.pathname === '/proxy') return serveProxy(req, res, hostHeader, { fetch: doFetch, allowedOrigins });
 
       // No CORS grants: preflights from other origins get no Access-Control headers and fail
       if (req.method === 'OPTIONS') return send(res, 204, {}, '');

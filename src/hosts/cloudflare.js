@@ -67,6 +67,8 @@ async function serveProxy(request, url, allowedOriginsStr) {
     allowedOrigins: parseAllowedOrigins(allowedOriginsStr),
     // Where this Worker instance runs — useful when flapping is PoP-specific
     colo: (request.cf && request.cf.colo) ? request.cf.colo : null,
+    // Aborts when the browser goes away; workerd fires it only with the enable_request_signal compatibility flag
+    signal: request.signal,
   });
   return cfJson(result.status, result.json);
 }

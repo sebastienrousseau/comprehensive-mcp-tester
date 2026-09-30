@@ -56,13 +56,15 @@ The UI depends on this envelope, so a change to it updates both hosts and their 
 | `status` | The server's HTTP status, or `0` when the transport failed (timeout or network) |
 | `headers` | The server's response headers |
 | `body` | The server's response body, cut at the size cap (8 MB); on a transport failure, a JSON-RPC error |
-| `diag` | `ok`, `errorType` (`timeout` or `network`), `errorDetail`, `ttfbMs`, `bodyMs`, `totalMs`, `bodyBytes`, `truncated`, `attempts`, `retriesSkipped`, `attemptLog`, `colo`, `targetHost`, `timeoutMs` |
+| `diag` | `ok`, `errorType` (`timeout`, `network` or `cancelled`), `errorDetail`, `ttfbMs`, `bodyMs`, `totalMs`, `bodyBytes`, `truncated`, `attempts`, `retriesSkipped`, `attemptLog`, `colo`, `targetHost`, `timeoutMs` |
 
 A transport failure is reported with HTTP 200 and envelope status 0 so the UI can always read the diagnostics.
 
 The proxy reads the server's body as a stream and stops at the size cap, cancelling the rest, so one large or endless response cannot exhaust the Worker isolate or the browser. `diag.bodyBytes` is the number of bytes kept, and `diag.truncated` is `true` when the body was cut; the Log shows both. On a transport failure they are `null` and `false`.
 
 When a request (a message with an `id`) is answered with `text/event-stream`, the proxy stops reading once the event carrying the response to that `id` has arrived: the specification only says a server SHOULD close the stream afterwards, and one that keeps it open would otherwise be reported as a timeout. The body then holds every event up to and including the response. A notification's stream is read to its end, the cap or the timeout.
+
+When the browser goes away (Cancel, a reload, a closed tab), each host aborts the signal it passes to `proxyMcp()`: the local server when the response closes before it was sent, the Worker through `request.signal` (which workerd fires only with the `enable_request_signal` compatibility flag). The fetch to the server stops, no retry follows, and `diag.errorType` is `cancelled`.
 
 ## Decisions already made
 

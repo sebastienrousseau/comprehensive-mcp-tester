@@ -146,6 +146,20 @@ export function buildOutHeaders(headers, method, purpose) {
   return out;
 }
 
+var CANCELLED = { errorType: 'cancelled', errorDetail: 'Cancelled by the client' };
+
+function isCancelled(signal) {
+  return !!(signal && signal.aborted);
+}
+
+/** Aborts `controller` when `signal` does; returns the function that undoes the link */
+function linkAbort(signal, controller) {
+  if (!signal) return function () {};
+  var onAbort = function () { controller.abort(); };
+  signal.addEventListener('abort', onAbort);
+  return function () { signal.removeEventListener('abort', onAbort); };
+}
+
 function transportError(err, timedOut, timeoutMs, ms) {
   var isTimeout = timedOut || (err && err.name === 'AbortError');
   return {
@@ -161,12 +175,14 @@ function transportError(err, timedOut, timeoutMs, ms) {
  * One fetch with its own timeout, covering the body as well as the headers.
  * → { response, status, headers, body, bodyBytes, truncated, ttfbMs, bodyMs, ms } or { errorType, errorDetail, ms }
  */
-export async function attemptOnce(req, doFetch, maxBytes) {
+export async function attemptOnce(req, doFetch, maxBytes, signal) {
   // On Workers the clock advances on I/O, so spans around an awaited fetch are real.
   var t0 = Date.now();
+  if (isCancelled(signal)) return Object.assign({ ms: 0 }, CANCELLED);
   var controller = new AbortController();
   var timedOut = false;
   var timer = setTimeout(function () { timedOut = true; controller.abort(); }, req.timeoutMs);
+  var unlink = linkAbort(signal, controller);
   try {
     var resp = await doFetch(req.url, {
       method: req.method,
@@ -186,9 +202,11 @@ export async function attemptOnce(req, doFetch, maxBytes) {
       ttfbMs: tHeaders - t0, bodyMs: tEnd - tHeaders, ms: tEnd - t0,
     };
   } catch (err) {
+    if (isCancelled(signal) && !timedOut) return Object.assign({ ms: Date.now() - t0 }, CANCELLED);
     return transportError(err, timedOut, req.timeoutMs, Date.now() - t0);
   } finally {
     clearTimeout(timer);
+    unlink();
   }
 }
 
@@ -300,6 +318,7 @@ export async function runAttempts(maxAttempts, attempt, wait) {
       return Object.assign({}, last, { attempt: n, attemptLog: attemptLog });
     }
     attemptLog.push({ n: n, outcome: last.errorType, status: null, ms: last.ms });
+    if (last.errorType === 'cancelled') break;
     if (n < maxAttempts) await wait(n);
   }
   return { failure: last, attemptLog: attemptLog };
@@ -362,6 +381,7 @@ export function failureEnvelope(req, colo, r) {
  * @param {string[]} [env.allowedOrigins] target hostnames allowed; empty = any
  * @param {string|null} [env.colo]      where this proxy instance runs (diagnostics only)
  * @param {number} [env.maxResponseBytes] body cap; defaults to DEFAULT_MAX_RESPONSE_BYTES
+ * @param {AbortSignal} [env.signal]    aborted when the caller goes away: stops the fetch and any retry
  */
 export async function proxyMcp(payload, env) {
   env = env || {};
@@ -374,7 +394,7 @@ export async function proxyMcp(payload, env) {
   if (headerError) return headerError;
   req.outHeaders = buildOutHeaders(req.headers, req.method, req.purpose);
   var doFetch = env.fetch || fetch;
-  var result = await runAttempts(req.retries + 1, function () { return attemptOnce(req, doFetch, env.maxResponseBytes); });
+  var result = await runAttempts(req.retries + 1, function () { return attemptOnce(req, doFetch, env.maxResponseBytes, env.signal); });
   var colo = env.colo || null;
   return result.failure ? failureEnvelope(req, colo, result) : successEnvelope(req, colo, result);
 }
