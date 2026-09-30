@@ -274,3 +274,49 @@ test('AC-SEC-CSP-01: both hosts send the policy', async () => {
     await new Promise((r) => { server.closeAllConnections?.(); server.close(r); });
   }
 });
+
+// ── Invalid headers and internal errors (#87) ─────────────────────────────
+
+const withHeaders = (headers) => JSON.stringify({ url: 'https://mcp.example/mcp', headers, body: '{}' });
+
+test('AC-PROXY-HDR-01: bad name gives 400', async () => {
+  let handler;
+  const { sw } = build({ write: false });
+  vm.runInContext(sw, vm.createContext({
+    addEventListener: (t, fn) => { handler = fn; }, Request, Response, Headers, URL, fetch, AbortController, TextDecoder, setTimeout, clearTimeout, Date, JSON, console,
+  }), { filename: 'worker.js' });
+  const worker = (body) => new Promise((resolve) => handler({ request: new Request('https://w.dev/proxy', { method: 'POST', body }), respondWith: resolve }));
+
+  const server = createServer({ allowedOrigins: '', allowedHosts: '' });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const node = (body) => fetch(`http://127.0.0.1:${server.address().port}/proxy`, { method: 'POST', body, headers: { 'Content-Type': 'application/json' } });
+  try {
+    for (const host of [worker, node]) {
+      const res = await host(withHeaders({ 'bad name': 'x' }));
+      assert.equal(res.status, 400);
+      assert.match((await res.json()).error, /header name "bad name"/);
+    }
+  } finally {
+    server.closeAllConnections?.();
+    await new Promise((r) => server.close(r));
+  }
+});
+
+test('AC-PROXY-HDR-02: Worker never throws', async () => {
+  let handler;
+  const { sw } = build({ write: false });
+  const errors = [];
+  const Broken = function () { throw new Error('boom'); };
+  vm.runInContext(sw, vm.createContext({
+    addEventListener: (t, fn) => { handler = fn; }, Request, Response, Headers: Broken, URL, fetch, AbortController, TextDecoder, setTimeout, clearTimeout, Date, JSON,
+    console: { error: (...a) => errors.push(a) },
+  }), { filename: 'worker.js' });
+  const res = await new Promise((resolve, reject) => {
+    try { handler({ request: new Request('https://w.dev/proxy', { method: 'POST', body: withHeaders({ a: '1' }) }), respondWith: (p) => Promise.resolve(p).then(resolve, reject) }); }
+    catch (e) { reject(e); }
+  });
+  assert.equal(res.status, 500);
+  assert.match(res.headers.get('content-type'), /application\/json/);
+  assert.deepEqual(await res.json(), { error: 'Internal error' }, 'no detail leaks to the caller');
+  assert.equal(errors.length, 1, 'the detail goes to the Worker log');
+});

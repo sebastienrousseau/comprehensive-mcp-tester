@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { proxyMcp, parseAllowedOrigins, clampInt, validateTarget, buildOutHeaders, runAttempts, attemptOnce, DEFAULT_MAX_RESPONSE_BYTES, isIdempotent } from '../src/core/proxy.js';
+import { proxyMcp, parseAllowedOrigins, clampInt, validateTarget, buildOutHeaders, runAttempts, attemptOnce, DEFAULT_MAX_RESPONSE_BYTES, isIdempotent, validateHeaders } from '../src/core/proxy.js';
 import { startMockServer } from './fixtures/mock-mcp-server.mjs';
 
 let mock;
@@ -378,4 +378,17 @@ test('isIdempotent: reads, lists, discovery and ping; never calls, notifications
   assert.equal(isIdempotent({ body: 'not json' }), false);
   assert.equal(isIdempotent({ method: 'GET', purpose: 'oauth' }), true, 'OAuth discovery is a GET');
   assert.equal(isIdempotent({ method: 'POST', purpose: 'oauth', body: 'grant_type=authorization_code' }), false, 'a code is single-use');
+});
+
+test('validateHeaders: RFC 9110 names; no CR, LF or NUL, and nothing Headers would refuse, in values', () => {
+  assert.equal(validateHeaders({ 'X-Ok': 'a b\tc', "!#$%&'*+-.^_`|~": 'v', Accept: 'é' }), null);
+  for (const [name, value, why] of [
+    ['bad name', 'x', 'header name "bad name"'], ['', 'x', 'header name ""'], ['a:b', 'x', 'header name "a:b"'],
+    ['X-A', 'a\r\nInjected: 1', 'header "X-A"'], ['X-A', 'a\nb', 'header "X-A"'], ['X-A', 'a\u0000b', 'header "X-A"'], ['X-A', 'snow ☃', 'header "X-A"'],
+  ]) {
+    const e = validateHeaders({ [name]: value });
+    assert.equal(e.status, 400, JSON.stringify(name));
+    assert.ok(e.json.error.includes(why), e.json.error);
+  }
+  assert.equal(validateHeaders({ 'X-N': 5 }), null, 'numbers are sent as text');
 });

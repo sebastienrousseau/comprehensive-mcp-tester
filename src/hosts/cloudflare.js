@@ -14,7 +14,8 @@
  * The build wraps this file into two entry points:
  *   dist/worker.js   Service Worker format — paste into the dashboard editor
  *   dist/worker.mjs  ES module format      — for `wrangler deploy`
- * Both call handleRequest(request, allowedOriginsString).
+ * Both call handleRequest(request, allowedOriginsString), which never throws:
+ * an unexpected error is logged and answered with a JSON 500, not Cloudflare's 1101 page.
  */
 import { proxyMcp, parseAllowedOrigins } from '../core/proxy.js';
 import { clientMetadataDocument, CLIENT_METADATA_PATH, CALLBACK_PATH } from '../core/oauth-client.js';
@@ -23,6 +24,15 @@ import { CONTENT_SECURITY_POLICY } from '../core/security-headers.js';
 /* global HTML */
 
 export async function handleRequest(request, allowedOriginsStr) {
+  try {
+    return await route(request, allowedOriginsStr);
+  } catch (err) {
+    console.error(err);   // the detail goes to the Worker log, not the response
+    return cfJson(500, { error: 'Internal error' });
+  }
+}
+
+async function route(request, allowedOriginsStr) {
   var url = new URL(request.url);
 
   if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '' || url.pathname === CALLBACK_PATH)) {
@@ -33,30 +43,32 @@ export async function handleRequest(request, allowedOriginsStr) {
     return cfJson(200, clientMetadataDocument(url.origin));
   }
 
-  if (request.method === 'POST' && url.pathname === '/proxy') {
-    var origin = request.headers.get('Origin');
-    if (origin && origin !== url.origin) {
-      return cfJson(403, { error: 'Cross-origin requests to this proxy are not allowed' });
-    }
-    var payload;
-    try {
-      payload = await request.json();
-    } catch {
-      return cfJson(400, { error: 'Invalid JSON in proxy request body' });
-    }
-    var result = await proxyMcp(payload, {
-      fetch: fetch,
-      allowedOrigins: parseAllowedOrigins(allowedOriginsStr),
-      // Where this Worker instance runs — useful when flapping is PoP-specific
-      colo: (request.cf && request.cf.colo) ? request.cf.colo : null,
-    });
-    return cfJson(result.status, result.json);
-  }
+  if (request.method === 'POST' && url.pathname === '/proxy') return serveProxy(request, url, allowedOriginsStr);
 
   // No CORS grants: preflights from other origins get no Access-Control headers and fail
   if (request.method === 'OPTIONS') return new Response(null, { status: 204 });
 
   return new Response('Not found', { status: 404 });
+}
+
+async function serveProxy(request, url, allowedOriginsStr) {
+  var origin = request.headers.get('Origin');
+  if (origin && origin !== url.origin) {
+    return cfJson(403, { error: 'Cross-origin requests to this proxy are not allowed' });
+  }
+  var payload;
+  try {
+    payload = await request.json();
+  } catch {
+    return cfJson(400, { error: 'Invalid JSON in proxy request body' });
+  }
+  var result = await proxyMcp(payload, {
+    fetch: fetch,
+    allowedOrigins: parseAllowedOrigins(allowedOriginsStr),
+    // Where this Worker instance runs — useful when flapping is PoP-specific
+    colo: (request.cf && request.cf.colo) ? request.cf.colo : null,
+  });
+  return cfJson(result.status, result.json);
 }
 
 export function cfJson(status, body) {

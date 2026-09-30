@@ -49,7 +49,7 @@ The UI depends on this envelope, so a change to it updates both hosts and their 
 | `retries` | Clamped to 0 to 3, default 0. Applied only to requests that read (`server/discover`, `*/list`, `ping`, `resources/read`, `prompts/get`, and OAuth `GET`s); anything else gets one attempt and `diag.retriesSkipped` says why |
 | `purpose` | `mcp` (default) or `oauth`; `oauth` skips the MCP `Accept` / `Content-Type` repair |
 
-**Response:** HTTP 400 or 403 with `{ error }` for bad input or a target outside the allowlist. Otherwise HTTP 200 with:
+**Response:** HTTP 400 or 403 with `{ error }` for bad input (including a header name that is not an RFC 9110 token, or a value with a line break, NUL or a character outside Latin-1; the error names the header) or a target outside the allowlist. An unexpected error in either host is a JSON 500 `{ error: 'Internal error' }`, with the detail only in the host's log. Otherwise HTTP 200 with:
 
 | Field | Meaning |
 | :--- | :--- |

@@ -105,6 +105,23 @@ export function validateTarget(targetUrl, allowed) {
   return { url: parsed };
 }
 
+// RFC 9110 section 5.1: a field name is a token
+var HEADER_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+// Section 5.5: visible characters, space, tab and obs-text; never CR, LF or NUL
+var HEADER_VALUE = /^[\t\x20-\x7E\x80-\xFF]*$/;
+
+/** null when every header can be sent, else a 400 naming the first one that cannot */
+export function validateHeaders(headers) {
+  var names = Object.keys(headers);
+  for (var i = 0; i < names.length; i++) {
+    if (!HEADER_NAME.test(names[i])) return badRequest('Invalid header name "' + names[i] + '": use letters, digits and !#$%&\'*+-.^_`|~ only');
+    if (!HEADER_VALUE.test(String(headers[names[i]]))) {
+      return badRequest('Invalid value for header "' + names[i] + '": no line breaks, NUL or characters outside Latin-1');
+    }
+  }
+  return null;
+}
+
 function hasBody(method) {
   return method !== 'GET' && method !== 'HEAD';
 }
@@ -353,6 +370,8 @@ export async function proxyMcp(payload, env) {
   var target = validateTarget(req.url, env.allowedOrigins || []);
   if (target.error) return target.error;
   req.target = target.url;
+  var headerError = validateHeaders(req.headers);
+  if (headerError) return headerError;
   req.outHeaders = buildOutHeaders(req.headers, req.method, req.purpose);
   var doFetch = env.fetch || fetch;
   var result = await runAttempts(req.retries + 1, function () { return attemptOnce(req, doFetch, env.maxResponseBytes); });
