@@ -1,6 +1,6 @@
 # Roadmap
 
-What MCP Tester is building next, in the agreed order. Items 1 to 3 have shipped; the rest are planned. Each planned item is an epic with its own issues and acceptance criteria; the issues are tracked in the [sebastienrousseau/comprehensive-mcp-tester](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues) fork, and every criterion becomes a regression test before its issue closes (see [`CONTRIBUTING.md`](CONTRIBUTING.md#acceptance-criteria-and-regression-tests)).
+What MCP Tester is building next, in the agreed order. Items 1 to 3 have shipped; the rest are planned. Each planned item is an epic with its own issues and acceptance criteria; the issues are tracked in the [sebastienrousseau/comprehensive-mcp-tester](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues) fork, and every criterion becomes a regression test before its issue closes (see [`CONTRIBUTING.md`](CONTRIBUTING.md#acceptance-criteria-and-regression-tests)). How each item gets built, the audit behind it, and where to resume are in the [implementation plan](docs/PLAN.md).
 
 Milestone versions below are the fork's plan for when each item lands. They are targets, not promises. The first release is 0.0.1; the 0.8.0 to 0.10.0 shown for items 1 to 3 are pre-release numbers from before releases started, never tagged.
 

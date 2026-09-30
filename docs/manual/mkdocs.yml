@@ -58,6 +58,7 @@ not_in_nav: |
 nav:
   - Overview: README.md
   - Roadmap: ROADMAP.md
+  - Implementation plan: docs/PLAN.md
   - Changelog: CHANGELOG.md
   - How it works:
       - Architecture: docs/ARCHITECTURE.md
