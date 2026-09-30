@@ -225,7 +225,7 @@ export async function attemptOnce(req, doFetch, maxBytes, signal) {
   }
 }
 
-/** The JSON-RPC id of a request body, or null for a notification or anything unparseable. */
+/** The JSON-RPC id of a request body, or null for a notification or anything unparsable. */
 export function requestId(body) {
   try {
     var msg = JSON.parse(body);
