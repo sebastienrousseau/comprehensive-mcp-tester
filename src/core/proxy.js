@@ -127,7 +127,7 @@ export async function attemptOnce(req, doFetch, maxBytes) {
     });
     // fetch resolves once response headers arrive — time to first byte
     var tHeaders = Date.now();
-    var read = await readBounded(resp, maxBytes || DEFAULT_MAX_RESPONSE_BYTES);
+    var read = await readBounded(resp, maxBytes || DEFAULT_MAX_RESPONSE_BYTES, requestId(req.body));
     var tEnd = Date.now();
     var headers = {};
     resp.headers.forEach(function (val, key) { headers[key] = val; });
@@ -142,16 +142,75 @@ export async function attemptOnce(req, doFetch, maxBytes) {
   }
 }
 
+/** The JSON-RPC id of a request body, or null for a notification or anything unparseable. */
+export function requestId(body) {
+  try {
+    var msg = JSON.parse(body);
+    return msg && !Array.isArray(msg) && msg.id != null && typeof msg.method === 'string' ? msg.id : null;
+  } catch {
+    return null;
+  }
+}
+
+function isResponseTo(data, id) {
+  try {
+    var msg = JSON.parse(data);
+    return !!msg && msg.id === id && typeof msg.method !== 'string' && ('result' in msg || 'error' in msg);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * An incremental text/event-stream reader: feed(text) returns true once an event
+ * carries the JSON-RPC response to `id`. Lines end in CR, LF or CRLF; `data:` may
+ * or may not be followed by a space; comments and other fields are ignored.
+ */
+export function sseResponseWatcher(id) {
+  var pending = '';
+  var data = [];
+  function line(l) {
+    if (l === '') {
+      var done = data.length > 0 && isResponseTo(data.join('\n'), id);
+      data = [];
+      return done;
+    }
+    if (l.indexOf('data:') === 0) data.push(l.charAt(5) === ' ' ? l.slice(6) : l.slice(5));
+    return false;
+  }
+  var afterCR = false;
+  return function feed(text) {
+    if (!text) return false;
+    // A CR ending the last chunk already ended its line; an LF starting this one completes that CRLF
+    if (afterCR && text.charAt(0) === '\n') text = text.slice(1);
+    afterCR = text.charAt(text.length - 1) === '\r';
+    var lines = (pending + text).split(/\r\n|\r|\n/);
+    pending = lines.pop();
+    for (var i = 0; i < lines.length; i++) {
+      if (line(lines[i])) return true;
+    }
+    return false;
+  };
+}
+
+function watcherFor(res, matchId) {
+  var type = (res.headers && res.headers.get('content-type')) || '';
+  return matchId != null && type.indexOf('text/event-stream') !== -1 ? sseResponseWatcher(matchId) : null;
+}
+
 /**
  * Reads a response body as UTF-8, keeping at most maxBytes and cancelling the
  * stream there. Each chunk is decoded as it arrives and dropped, so memory holds
- * the text read so far plus one chunk, never the whole body twice.
+ * the text read so far plus one chunk, never the whole body twice. For an event
+ * stream answering a request (matchId set), it also stops once the event carrying
+ * that response has arrived, since a server may keep the stream open.
  * → { text, bytes, truncated }
  */
-export async function readBounded(res, maxBytes) {
+export async function readBounded(res, maxBytes, matchId) {
   if (!res.body) return { text: '', bytes: 0, truncated: false };
   var reader = res.body.getReader();
   var decoder = new TextDecoder();
+  var watch = watcherFor(res, matchId);
   var text = '';
   var bytes = 0;
   for (;;) {
@@ -163,7 +222,12 @@ export async function readBounded(res, maxBytes) {
       return { text: text + decoder.decode(step.value.subarray(0, room)), bytes: maxBytes, truncated: true };
     }
     bytes += step.value.byteLength;
-    text += decoder.decode(step.value, { stream: true });
+    var piece = decoder.decode(step.value, { stream: true });
+    text += piece;
+    if (watch && watch(piece)) {
+      reader.cancel().catch(function () {});
+      return { text: text, bytes: bytes, truncated: false };
+    }
   }
 }
 

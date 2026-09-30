@@ -273,3 +273,70 @@ test('bounded read: under the cap nothing is cut, and the default cap is 8 MB', 
   const r = await proxyMcp({ url: 'https://a.example/mcp', body: '{}' }, { fetch: exact.fetchImpl, maxResponseBytes: 128 * 1024 });
   assert.deepEqual([r.json.diag.truncated, r.json.diag.bodyBytes], [false, 128 * 1024], 'a body of exactly the cap is whole');
 });
+
+// ── SSE early return (#84) ────────────────────────────────────────────────
+
+const rpc = (method, id) => JSON.stringify({ jsonrpc: '2.0', method, params: {}, ...(id === undefined ? {} : { id }) });
+
+test('AC-PROXY-SSE-01: early return', async () => {
+  const url = mock.base + '/scenario/sse-keepalive/mcp';
+  const hs = await call({ url, timeoutMs: 2000, body: rpc('initialize', 1) });
+  assert.equal(hs.json.diag.ok, true, 'initialize returns too');
+  const sid = hs.json.headers['mcp-session-id'];
+  const t0 = Date.now();
+  const { json } = await call({ url, timeoutMs: 2000, headers: { 'mcp-session-id': sid }, body: rpc('tools/list', 2) });
+  const elapsed = Date.now() - t0;
+  assert.ok(elapsed < 200, `${elapsed}ms with the stream held open`);
+  assert.equal(json.diag.ok, true);
+  assert.equal(json.diag.attempts, 1);
+  assert.match(json.body, /"id":2,"result":\{"tools":/);
+  assert.match(json.body, /notifications\/message/, 'events before the response are kept');
+});
+
+/** An SSE origin that sends `events`, then holds the stream open until cancelled (or closes it when `close`). */
+function sseOrigin(events, { close = false } = {}) {
+  const seen = { cancelled: false };
+  const enc = new TextEncoder();
+  // Like a real fetch, an abort errors the body stream
+  const fetchImpl = async (url, init) => new Response(new ReadableStream({
+    start(c) {
+      for (const e of events) c.enqueue(enc.encode(e));
+      if (close) return c.close();
+      init.signal.addEventListener('abort', () => { try { c.error(new DOMException('aborted', 'AbortError')); } catch { /* already done */ } });
+    },
+    cancel() { seen.cancelled = true; },
+  }), { headers: { 'content-type': 'text/event-stream' } });
+  return { fetchImpl, seen };
+}
+
+test('AC-PROXY-SSE-02: notifications still read to the end', async () => {
+  const note = sseOrigin(['data: {"jsonrpc":"2.0","id":7,"result":{}}\n\n', ': still here\n\n'], { close: true });
+  const { json } = await proxyMcp({ url: 'https://a.example/mcp', body: rpc('notifications/initialized') }, { fetch: note.fetchImpl });
+  assert.equal(json.diag.ok, true);
+  assert.match(json.body, /still here/, 'with no id to wait for, the whole stream is read');
+  assert.equal(note.seen.cancelled, false);
+  const open = sseOrigin(['data: {"jsonrpc":"2.0","method":"notifications/progress"}\n\n']);
+  const t = await proxyMcp({ url: 'https://a.example/mcp', timeoutMs: 500, body: rpc('notifications/initialized') }, { fetch: open.fetchImpl });
+  assert.equal(t.json.diag.errorType, 'timeout', 'an open stream is read until the deadline');
+});
+
+test('SSE matching: line endings, data with or without a space, split and multi-line events', async () => {
+  const cases = [
+    ['data: {"jsonrpc":"2.0","id":3,"result":{"a":1}}\r\n\r\n'],
+    ['data:{"jsonrpc":"2.0","id":3,"result":{}}\r\r'],
+    ['event: message\nid: 9\n', ': comment\ndata: {"jsonrpc":"2.0",\ndata: "id":3,"error":{"code":1,"message":"x"}}\n', '\n'],
+    ['data: {"jsonrpc":"2.0","id":3,"re', 'sult":{}}\r', '\n\r\n'],
+  ];
+  for (const events of cases) {
+    const o = sseOrigin(events);
+    const { json } = await proxyMcp({ url: 'https://a.example/mcp', timeoutMs: 1000, body: rpc('tools/list', 3) }, { fetch: o.fetchImpl });
+    assert.equal(json.diag.ok, true, JSON.stringify(events));
+    assert.ok(o.seen.cancelled, 'the held stream is cancelled once the response is in');
+  }
+  const other = sseOrigin(['data: {"jsonrpc":"2.0","id":4,"result":{}}\n\n', 'data: {"jsonrpc":"2.0","method":"x","id":3}\n\n']);
+  const miss = await proxyMcp({ url: 'https://a.example/mcp', timeoutMs: 400, body: rpc('tools/list', 3) }, { fetch: other.fetchImpl });
+  assert.equal(miss.json.diag.errorType, 'timeout', 'another id, or a request carrying our id, is not our response');
+  const text = sseOrigin(['data: {"jsonrpc":"2.0","id":"a","result":{}}\n\n']);
+  const str = await proxyMcp({ url: 'https://a.example/mcp', timeoutMs: 1000, body: rpc('tools/list', 'a') }, { fetch: text.fetchImpl });
+  assert.equal(str.json.diag.ok, true, 'string ids match');
+});

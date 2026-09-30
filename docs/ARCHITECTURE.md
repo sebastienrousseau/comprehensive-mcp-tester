@@ -62,6 +62,8 @@ A transport failure is reported with HTTP 200 and envelope status 0 so the UI ca
 
 The proxy reads the server's body as a stream and stops at the size cap, cancelling the rest, so one large or endless response cannot exhaust the Worker isolate or the browser. `diag.bodyBytes` is the number of bytes kept, and `diag.truncated` is `true` when the body was cut; the Log shows both. On a transport failure they are `null` and `false`.
 
+When a request (a message with an `id`) is answered with `text/event-stream`, the proxy stops reading once the event carrying the response to that `id` has arrived: the specification only says a server SHOULD close the stream afterwards, and one that keeps it open would otherwise be reported as a timeout. The body then holds every event up to and including the response. A notification's stream is read to its end, the cap or the timeout.
+
 ## Decisions already made
 
 These are settled; changing one is a conversation with the maintainers first.

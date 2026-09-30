@@ -11,6 +11,19 @@ import { serveLegacy, serveModern, modernVersionOf, reply, sleep, MODERN_VERSION
 const SLOW_LIST_TOOLS = [{ name: 'slow_list_tool', description: 'Only served by /slow-list', inputSchema: { type: 'object', properties: {} } }];
 const SLOW_LIST_MS = 800;
 
+const KEEPALIVE_MS = 250;
+const KEEPALIVE_MAX_MS = 30000;
+
+/** Streams a notification then `obj`, and keeps the stream open until the client goes or 30 s pass */
+function holdOpen(res, obj, headers) {
+  res.writeHead(200, { 'Content-Type': 'text/event-stream', ...headers });
+  res.write('event: message\ndata: ' + JSON.stringify({ jsonrpc: '2.0', method: 'notifications/message', params: { level: 'info', data: 'working' } }) + '\n\n');
+  res.write('event: message\ndata: ' + JSON.stringify(obj) + '\n\n');
+  const tick = setInterval(() => res.write(': keepalive\n\n'), KEEPALIVE_MS);
+  const stop = setTimeout(() => res.end(), KEEPALIVE_MAX_MS);
+  res.on('close', () => { clearInterval(tick); clearTimeout(stop); });
+}
+
 export const STANDARD = [
   { name: 'mcp', alias: '/mcp', protocol: 'legacy',
     description: 'Normal legacy server: initialize handshake, session required afterwards',
@@ -27,6 +40,9 @@ export const STANDARD = [
   { name: 'stream', alias: '/stream', protocol: 'legacy',
     description: 'tools/call answers as text/event-stream instead of JSON',
     handler: (ctx) => serveLegacy(ctx, { streamCalls: true }) },
+  { name: 'sse-keepalive', protocol: 'legacy',
+    description: 'Every answer is an SSE stream: a log notification, the response, then keepalive comments with the stream held open (the spec only says SHOULD close)',
+    handler: (ctx) => serveLegacy({ ...ctx, reply: (status, obj, headers) => (status === 200 && obj !== undefined ? holdOpen(ctx.res, obj, headers) : ctx.reply(status, obj, headers)) }) },
   { name: 'slow-list', alias: '/slow-list', protocol: 'legacy',
     description: 'tools/list answers after 800ms with its own tool list, so a late answer is recognisable',
     handler: (ctx) => serveLegacy(ctx, { listTools: () => sleep(SLOW_LIST_MS).then(() => SLOW_LIST_TOOLS) }) },
