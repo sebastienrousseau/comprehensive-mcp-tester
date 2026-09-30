@@ -17,13 +17,13 @@
   },
   "src/hosts/node-server.js": {
     "complexity": {
-      "(unnamed #1)": 22
+      "(unnamed #1)": 20
     },
     "max-lines-per-function": {
       "createServer": 63
     },
     "sonarjs/cognitive-complexity": {
-      "(unnamed #1)": 22
+      "(unnamed #1)": 21
     }
   },
   "src/ui/js/auth.js": {
