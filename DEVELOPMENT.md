@@ -7,7 +7,7 @@ Everything needed to work on MCP Tester: setup, the layout, the test suites, and
 - Node.js 22 or later (see [`docs/POLICIES.md`](docs/POLICIES.md)).
 - `npm install`. Playwright is the only dependency, and only for the end-to-end tests.
 - For linting, `npm ci --prefix tools/lint` once: ESLint lives in its own package so the project's install stays Playwright only ([ADR 0007](docs/adr/0007-lint-gate.md)).
-- For the end-to-end tests, a Chromium build: `npx playwright install chromium`, or point `PW_CHROMIUM_PATH` at one. Without it those tests skip rather than fail.
+- For the end-to-end tests, a Chromium build: `npx playwright install chromium`, or point `PW_CHROMIUM_PATH` at one (then only that one is tried). Without it those tests skip locally; with `CI=true` they fail, so a broken browser install cannot hide UI regressions in CI.
 
 The `Makefile` wraps the npm scripts (`make help` lists every target), so either works:
 
@@ -53,7 +53,7 @@ test('AC-QA-TRACE-01: covered AC passes', () => { /* ... */ });
 
 | CI job | What it checks | Locally |
 | :--- | :--- | :--- |
-| Test (Node 22, 24) | Every suite, including e2e with Chromium | `npm test` |
+| Test (Node 22, 24) | Every suite, including e2e with Chromium, which fails rather than skips when `CI=true`; a JUnit report per Node version, uploaded, with failing tests by acceptance criterion in the job summary | `npm run test:ci` (writes `reports/junit-node<major>.xml`) |
 | Test (Node 22, 24) | Every acceptance criterion has a test | `npm run test:trace` |
 | Test (Node 22, 24) | The build and its self-checks; nothing under `src/core/` imports a `node:` module or a Cloudflare-only API | `make build` |
 | Test (Node 22, 24) | A staged install puts the `mcp-tester` command in place | `make DESTDIR=/tmp/stage install` |
@@ -78,8 +78,8 @@ Every release increments the version by exactly 0.0.1 and is built from `feat/v<
 
 **Before tagging**, on the release branch:
 
-1. Bump the version everywhere it appears: `package.json`, `package-lock.json` (`npm install --package-lock-only`), `CLIENT_INFO` in `src/ui/js/state.js`, and "currently X.Y.Z" in the README. `make versions` and `make readme` fail until they all agree.
-2. Move the `Unreleased` entries in `CHANGELOG.md` under a `## [X.Y.Z] - <date>` heading.
+1. `npm run version:bump`: sets the next version (exactly +0.0.1) in `package.json`, `package-lock.json`, `CLIENT_INFO` in `src/ui/js/state.js` and the README, and moves the `Unreleased` entries in `CHANGELOG.md` under a `## [X.Y.Z] - <date>` heading. `npm run version:check` (also run in CI) rejects any version that is not the last release or exactly the next one.
+2. Check the new changelog section reads well; edit its wording if needed.
 3. Write `docs/releases/vX.Y.Z.md`: the release's two to four highlights ([format](docs/releases/README.md)).
 4. Merge the release pull request into `main`.
 
