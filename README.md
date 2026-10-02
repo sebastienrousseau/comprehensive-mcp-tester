@@ -1,4 +1,4 @@
-<!-- SPDX-License-Identifier: NOASSERTION (no licence chosen yet: https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/51) -->
+<!-- SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 -->
 
 <p align="center">
   <img src="docs/assets/logo.svg" alt="MCP Tester logo" width="128" />
@@ -14,8 +14,8 @@
   <a href="https://github.com/mollerade/comprehensive-mcp-tester/actions"><img src="https://img.shields.io/github/actions/workflow/status/mollerade/comprehensive-mcp-tester/ci.yml?branch=main&style=for-the-badge&logo=github&label=build" alt="Build" /></a>
   <a href="#install"><img src="https://img.shields.io/badge/registry-not%20published-lightgrey?style=for-the-badge&color=fc8d62&logo=nodedotjs" alt="Registry" /></a>
   <a href="#documentation"><img src="https://img.shields.io/badge/docs-in%20repo-blue?style=for-the-badge&labelColor=555555&logo=markdown" alt="Docs" /></a>
-  <a href="https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/51"><img src="https://img.shields.io/badge/license-not%20yet%20chosen-blue.svg?style=for-the-badge" alt="License: not yet chosen" /></a>
-  <a href="https://github.com/mollerade/comprehensive-mcp-tester/blob/main/docs/POLICIES.md"><img src="https://img.shields.io/badge/node-20%2B-93450a.svg?style=for-the-badge&logo=nodedotjs" alt="Node.js 20 or later" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm--Noncommercial--1.0.0-blue.svg?style=for-the-badge" alt="License: PolyForm-Noncommercial-1.0.0" /></a>
+  <a href="https://github.com/mollerade/comprehensive-mcp-tester/blob/main/docs/POLICIES.md"><img src="https://img.shields.io/badge/node-22%2B-93450a.svg?style=for-the-badge&logo=nodedotjs" alt="Node.js 22 or later" /></a>
 </p>
 
 ---
@@ -24,7 +24,7 @@
 
 **Getting started**
 
-- [Install](#install) — hosted on Cloudflare (no tools), with Wrangler, or as a local Node server
+- [Install](#install) — hosted on Cloudflare (no tools), with Wrangler, as a local Node server, or as an installed command
 - [Requirements](#requirements) — toolchain floor, platforms
 - [Quick Start](#quick-start) — run the tester against the bundled mock server in two commands
 
@@ -56,7 +56,14 @@
 
 Not applicable: MCP Tester is an application, not a library, and it is not published to npm (`package.json` is `"private": true`). Run it from a checkout or deploy it as a Cloudflare Worker.
 
-**On Cloudflare, no tools needed.** Take `dist/worker.js` from a build (or from the `mcp-tester-dist` CI artifact) and follow the instructions at the top of that file: create a "Hello World" Worker, replace all of its code with the file, and deploy.
+**On Cloudflare, no tools needed.** Take `worker.js` from a [release](https://github.com/sebastienrousseau/comprehensive-mcp-tester/releases) (or `dist/worker.js` from a build) and follow the instructions at the top of that file: create a "Hello World" Worker, replace all of its code with the file, and deploy.
+
+Every release file comes with a SHA-256 checksum and signed build provenance. To check a download before deploying it:
+
+```sh
+sha256sum --check --ignore-missing SHA256SUMS
+gh attestation verify worker.js --repo sebastienrousseau/comprehensive-mcp-tester
+```
 
 **On Cloudflare with Wrangler**
 
@@ -72,13 +79,21 @@ npm install
 npm start               # http://127.0.0.1:8787
 ```
 
+**As a command**, from a checkout:
+
+```sh
+make install            # installs `mcp-tester` into /usr/local (PREFIX=... and DESTDIR=... honoured)
+mcp-tester              # http://127.0.0.1:8787
+make uninstall
+```
+
 The local server is the version to use inside company networks: nothing leaves your machine except the calls to the MCP server itself.
 
 ---
 
 ## Requirements
 
-- **Node.js 20 or later** (`engines` in `package.json`); CI tests Node 20 and 22. The floor is the oldest Node.js LTS still in maintenance, so it is about to rise to 22 ([#58](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/58)). See [`docs/POLICIES.md`](docs/POLICIES.md).
+- **Node.js 22 or later** (`engines` in `package.json`), the oldest Node.js LTS still in maintenance; CI tests Node 22 and 24. See [`docs/POLICIES.md`](docs/POLICIES.md).
 - **A current browser** for the UI. The client code is kept ES5-style so it runs on older iPad Safari.
 - **Chromium**, only for the end-to-end tests: `npx playwright install chromium`, or set `PW_CHROMIUM_PATH`. Without it those tests skip.
 - **No runtime dependencies.** Playwright is the only dev dependency.
@@ -146,7 +161,7 @@ Browsers can't call most MCP servers directly because the servers don't send COR
 Every sign-in step appears in a trace (ok / warning / failed) and in the Log, because discovery is where servers usually break.
 
 - **Client registration.** A client ID you enter is used first. Otherwise the tester uses a client ID metadata document, which it hosts at `/oauth/client-metadata.json`. That only works on the Worker, because an authorization server can't fetch a document from `localhost`. As a last resort it uses dynamic client registration, which the spec now deprecates.
-- **Pop-ups.** Sign-in normally happens in a pop-up. If pop-ups are blocked, the page redirects to the sign-in page and picks up where it left off when it comes back. Only the in-flight request is kept (in this tab's `sessionStorage`), and it is deleted as soon as the page returns.
+- **Pop-ups.** Sign-in normally happens in a pop-up. If pop-ups are blocked, the page redirects to the sign-in page and picks up where it left off when it comes back. Only the in-flight request is kept (in this tab's `sessionStorage`), and it is deleted as soon as the page returns. A client secret is never kept: if the sign-in needs one, you are asked to enter it again, or you can allow pop-ups.
 
 **Diagnostics.** The health monitor probes the server on an interval and records every call. The timeline uses three states (ok / slow / failed), with the failure kind in tooltips and the breakdown table; the latency chart breaks its line across failures so a lone success between failures still shows.
 
@@ -190,23 +205,22 @@ The bundled mock server (`npm run mock`) is the example set. Point the tester at
 - **Load or performance testing.** The health monitor measures availability and latency one request at a time; it does not generate load.
 - **General REST APIs.** The tester is MCP-shaped on purpose and is not a general HTTP client.
 - **The hosted Worker with real credentials, as deployed by default.** It is public: put Cloudflare Access in front of it first (see [Security](#security)), or use the local server.
-- **Anything that needs a licence.** The project has no licence yet ([#51](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/51)), so it cannot be redistributed or adopted by an organisation.
 
 ---
 
 ## Development
 
 ```bash
-npm run dev             # local server; restarts on core/host changes, UI edits show on reload
-npm test                # all suites
-npm run test:trace      # every acceptance criterion has a test, and every AC-titled test has a criterion
-npm run build           # regenerate dist/
-npm run mock            # mock MCP server on http://127.0.0.1:8788/mcp
+make check              # every suite, the traceability check, the README check and the build: the offline CI gate
+make dev                # local server; restarts on core/host changes, UI edits show on reload
+make lint               # markdownlint and codespell
+make mock               # mock MCP server on http://127.0.0.1:8788/mcp
+make help               # every target; each wraps an npm script, so npm run ... works too
 ```
 
-Edit `src/`, never `dist/`. The build checks its own output before writing: the HTML must round-trip exactly, `worker.js` must parse, and no module syntax may remain in the paste-able file. There is no `Makefile` yet ([#52](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/52)) and no fuzzing.
+Edit `src/`, never `dist/`. The build checks its own output before writing: the HTML must round-trip exactly, `worker.js` must parse, and no module syntax may remain in the paste-able file. There is no fuzzing yet.
 
-CI runs the tests, the traceability check and the build on Node 20 and 22, and a docs lint (markdownlint, codespell and a README structure check). [`DEVELOPMENT.md`](DEVELOPMENT.md) covers setup, the test suites, acceptance criteria and how to reproduce every CI gate locally.
+CI runs the tests, the traceability check and the build on Node 22 and 24, and a docs job: markdownlint, codespell, the README structure check, a check that every relative link and anchor resolves, and a strict build of the user manual. [`DEVELOPMENT.md`](DEVELOPMENT.md) covers setup, the test suites, acceptance criteria and how to reproduce every CI gate locally.
 
 ---
 
@@ -221,10 +235,13 @@ Report vulnerabilities privately through GitHub, as [`SECURITY.md`](SECURITY.md)
   - Add a bypass for `/oauth/client-metadata.json`, so authorization servers can fetch the client metadata document.
 - **Credentials stay in memory.** Auth keeps tokens and secrets in memory only and redacts them from the Log. The one exception is the pop-up fallback's in-flight request, kept in `sessionStorage` until the page returns.
 - **Saved headers are stored in the browser.** The Headers dialog saves its values in `localStorage`. Use Auth for tokens and keys.
+- **A Content-Security-Policy on the page**, from both hosts: it may only talk to its own origin (`connect-src 'self'`), so an injected script could not send tokens elsewhere, and it cannot be framed. The one external origin allowed is Google Fonts, for the stylesheet's fonts.
 - **OAuth checks are enforced, not just reported:** issuer mismatch, the `iss` in the authorization response, `state`, and PKCE S256 support.
-**Resource limits.** Every proxied request has a timeout, clamped to 500 ms to 120 s (default 15 s), and at most 3 retries (default 0). The local server rejects a request body over 1 MB with 413. Diagnostics keep the latest 500 samples. The Log is not capped yet, so a monitor left running for days grows it without bound ([#40](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/40)).
+**Resource limits.** Every proxied request has a timeout, clamped to 500 ms to 120 s (default 15 s), and at most 3 retries (default 0). The local server rejects a request body over 1 MB with 413. Diagnostics keep the latest 500 samples and the Log the latest 1000 entries, so a monitor left running for days stays bounded.
 
-**Testing and fuzzing.** The security invariants above are regression-tested: both hosts' origin checks and the local server's host and content-type checks in the hosts suite, the OAuth `iss` mix-up and PKCE end to end against the mock authorization server, and the https-only authorization endpoint in the UI-logic suite. There are no fuzz targets yet; the parsers most worth fuzzing are the SSE and JSON response handling. No OpenSSF Scorecard run yet ([#56](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/56)).
+**Testing and fuzzing.** The security invariants above are regression-tested: both hosts' origin checks and the local server's host and content-type checks in the hosts suite, the OAuth `iss` mix-up and PKCE end to end against the mock authorization server, and the https-only authorization endpoint in the UI-logic suite. There are no fuzz targets yet; the parsers most worth fuzzing are the SSE and JSON response handling.
+
+**Analysis in CI.** CodeQL scans all JavaScript with its extended security queries on every change, dependency review blocks new vulnerable dependencies, `npm audit` and registry-signature checks run on every push, and OpenSSF Scorecard runs weekly on `main`.
 
 **Supported versions.** Only the latest code on the default branch; there are no maintained release branches.
 
@@ -234,19 +251,19 @@ Report vulnerabilities according to [`SECURITY.md`](SECURITY.md).
 
 ## Documentation
 
-- **User manual:** not rendered yet ([#53](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/53)); this README is the user guide for now.
+- **User manual:** <https://sebastienrousseau.com/comprehensive-mcp-tester/>, published from these files on each release (`make docs` builds it locally).
 - **API reference:** not applicable, as this is not a library. The one internal contract, the `/proxy` envelope, is described in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 - **Developer docs:** [`DEVELOPMENT.md`](DEVELOPMENT.md) and [`CONTRIBUTING.md`](CONTRIBUTING.md).
-- **Ecosystem map:** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+- **Ecosystem map:** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), and the decisions behind it in [`docs/adr/`](docs/adr/README.md).
 - **Roadmap:** [`ROADMAP.md`](ROADMAP.md). **Changes:** [`CHANGELOG.md`](CHANGELOG.md).
-- **Policies:** [`docs/POLICIES.md`](docs/POLICIES.md) (toolchain floor, versioning). **Repository standard:** [`docs/STANDARDS.md`](docs/STANDARDS.md).
-- **Acceptance criteria:** [`docs/acceptance/`](docs/acceptance/).
+- **Policies:** [`docs/POLICIES.md`](docs/POLICIES.md) (toolchain floor, versioning). **Packaging:** [`docs/packaging.md`](docs/packaging.md), for anyone repackaging the tool. **Repository standard:** [`docs/STANDARDS.md`](docs/STANDARDS.md).
+- **Acceptance criteria:** [`docs/acceptance/`](docs/acceptance/README.md).
 
 ---
 
 ## Stability guarantees
 
-MCP Tester is pre-1.0 (currently 0.10.0). Every release increments the version by exactly 0.0.1 (0.10.0, then 0.10.1, 0.10.2, ...); any release may change the UI.
+MCP Tester is pre-1.0 (currently 0.0.1). Releases start at 0.0.1 and each one increments the version by exactly 0.0.1 (0.0.1, 0.0.2, ...); any release may change the UI. The 0.8.0 to 0.10.0 mentioned elsewhere were pre-release numbers, never tagged or released.
 
 **What counts as breaking.** A change is breaking when it changes what someone outside the UI relies on, even if no code signature moves:
 
@@ -263,4 +280,6 @@ MCP Tester is pre-1.0 (currently 0.10.0). Every release increments the version b
 
 ## License
 
-Not licensed yet. The repository has no `LICENSE` file, so all rights are reserved by the author and nobody else may use, modify or redistribute the code. Choosing a licence is the author's decision, tracked in [#51](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/51).
+Licensed under the PolyForm Noncommercial License 1.0.0 ([LICENSE](LICENSE)): use, copy, modify and share for any noncommercial purpose, including personal evaluation, research and education. Commercial use needs a separate agreement with the author.
+
+Required Notice: Copyright mollerade (<https://github.com/mollerade/comprehensive-mcp-tester>)

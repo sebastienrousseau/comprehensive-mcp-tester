@@ -75,7 +75,7 @@ function redact(o) {
   if (!o || typeof o !== 'object') return o;
   var out = Array.isArray(o) ? [] : {};
   for (var k in o) {
-    if (!o.hasOwnProperty(k)) continue;
+    if (!Object.prototype.hasOwnProperty.call(o, k)) continue;
     var v = o[k];
     if (REDACT_KEYS.indexOf(k) !== -1 && typeof v === 'string') out[k] = '[redacted, ' + v.length + ' chars]';
     else out[k] = redact(v);
@@ -86,20 +86,20 @@ function redact(o) {
 function formEncode(obj) {
   var parts = [];
   for (var k in obj) {
-    if (obj.hasOwnProperty(k) && obj[k] !== undefined && obj[k] !== null && obj[k] !== '') {
+    if (Object.prototype.hasOwnProperty.call(obj, k) && obj[k] !== undefined && obj[k] !== null && obj[k] !== '') {
       parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(obj[k]));
     }
   }
   return parts.join('&');
 }
 
-function parseQuery(search) {
-  var out = {}, pairs = String(search || '').replace(/^\?/, '').split('&');
+function parseQuery(search) {   // keeps only the authorization response's parameters (RFC 6749 4.1.2, RFC 9207)
+  var out = {}, keep = ['code', 'state', 'iss', 'error', 'error_description', 'error_uri'];
+  var pairs = String(search || '').replace(/^\?/, '').split('&');
   for (var i = 0; i < pairs.length; i++) {
-    if (!pairs[i]) continue;
     var eq = pairs[i].indexOf('=');
-    var k = eq === -1 ? pairs[i] : pairs[i].slice(0, eq), v = eq === -1 ? '' : pairs[i].slice(eq + 1);
-    out[decodeURIComponent(k.replace(/\+/g, ' '))] = decodeURIComponent(v.replace(/\+/g, ' '));
+    var k = decodeURIComponent((eq === -1 ? pairs[i] : pairs[i].slice(0, eq)).replace(/\+/g, ' '));
+    if (keep.indexOf(k) !== -1) out[k] = decodeURIComponent((eq === -1 ? '' : pairs[i].slice(eq + 1)).replace(/\+/g, ' '));
   }
   return out;
 }
@@ -460,10 +460,17 @@ function discoverOnly() {
 
 /* ── Redirect fallback ──
    Only the in-flight request is kept, in this tab's sessionStorage, and it is removed
-   the moment the page returns. Tokens never leave memory. */
+   the moment the page returns. Tokens never leave memory, and neither does a client
+   secret: it is left out, and a sign-in that needs one asks for it again on return. */
 function savePendingRedirect() {
   var p = auth.pending, pending = {};
-  for (var k in p) { if (p.hasOwnProperty(k) && k !== 'popup') pending[k] = p[k]; }
+  for (var k in p) { if (Object.prototype.hasOwnProperty.call(p, k) && k !== 'popup') pending[k] = p[k]; }
+  if (p.client && p.client.client_secret) {
+    var client = {};
+    for (var c in p.client) { if (Object.prototype.hasOwnProperty.call(p.client, c) && c !== 'client_secret') client[c] = p.client[c]; }
+    pending.client = client;
+    pending.secretRequired = true;
+  }
   try {
     sessionStorage.setItem('mcp_oauth_pending', JSON.stringify({
       pending: pending, clientId: auth.clientId, scope: auth.scope, preIssuer: auth.preIssuer, trace: auth.trace
@@ -496,7 +503,17 @@ function resumeRedirectSignIn() {
   if (p.client && p.client.how === 'dynamic registration') auth.registrations[p.issuer] = p.client;
   auth.pending = p; auth.busy = true;
   openAuthModal();
+  if (p.secretRequired) return askForSecretAgain();
   handleAuthResponse(parseQuery(search));
+}
+
+/* The secret was not kept across the redirect, so the code cannot be exchanged here */
+function askForSecretAgain() {
+  auth.pending = null; auth.busy = false; auth.clientSecret = '';
+  traceStep('Token request', 'fail', 'The client secret is not kept across the redirect, so the code was not exchanged. ' +
+    'Enter the client secret again and sign in, or allow pop-ups so sign-in stays in this page.');
+  renderAuthModal();
+  showToast('Enter the client secret again to finish signing in', 'err');
 }
 
 /* The OAuth redirect lands on this same page in the pop-up: hand the result back and close */

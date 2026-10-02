@@ -45,15 +45,15 @@
  */
 import http from 'node:http';
 import { randomUUID, createHash } from 'node:crypto';
-import { pathToFileURL } from 'node:url';
-import { reply, rpcErr, sleep } from './mock/protocol.mjs';
+import { reply, rpcErr, sleep, MAX_SLEEP_MS } from './mock/protocol.mjs';
 import { resolveScenario, scenarioForIssuerPath, listScenarios, SCENARIOS } from './mock/scenarios/index.mjs';
+import { isMain } from '../../scripts/is-main.mjs';
 
 export { TOOLS, MODERN_VERSION } from './mock/protocol.mjs';
 
 const PRM_PREFIX = '/.well-known/oauth-protected-resource';
 const AS_PREFIX = '/.well-known/oauth-authorization-server';
-const MAX_DELAY_MS = 30000;
+const MAX_DELAY_MS = MAX_SLEEP_MS;
 const FALLBACK = SCENARIOS.find((s) => s.name === 'mcp');   // any other path behaves like /mcp
 
 function asMetadata(base, issuerPath = '', pkceMethods = ['S256']) {
@@ -125,7 +125,7 @@ function serveAuthorize(res, oauth, base, url) {
 }
 
 function clientOf(req, f) {
-  const basic = /^Basic\s+(.+)$/i.exec(req.headers.authorization || '');
+  const basic = /^Basic\s+(\S+)$/i.exec(req.headers.authorization || '');
   if (!basic) return [f.client_id, f.client_secret];
   return Buffer.from(basic[1], 'base64').toString('utf8').split(':').map(decodeURIComponent);
 }
@@ -207,7 +207,8 @@ async function serveMcp(state, req, res, path, raw, scenario) {
 /** ?delay=<ms>: hold the request before anything else happens */
 function requestedDelay(url) {
   const delay = Number(url.searchParams.get('delay'));
-  return delay > 0 ? sleep(Math.min(delay, MAX_DELAY_MS)) : null;
+  if (!(delay > 0)) return null;
+  return sleep(delay > MAX_DELAY_MS ? MAX_DELAY_MS : delay);
 }
 
 async function route(state, req, res, raw) {
@@ -241,7 +242,8 @@ export function startMockServer(port = 0, host = '127.0.0.1') {
     req.on('data', (c) => chunks.push(c));
     req.on('end', () => route(state, req, res, Buffer.concat(chunks).toString('utf8')).catch((e) => {
       // A broken scenario must fail its request, not leave it hanging
-      if (!res.headersSent) reply(res, 500, { error: 'mock error: ' + e.message });
+      console.error(e);   // the detail goes to the test output, not the response
+      if (!res.headersSent) reply(res, 500, { error: 'mock error' });
       else res.end();
     }));
   });
@@ -265,7 +267,7 @@ export function startMock({ port = 0, host = '127.0.0.1' } = {}) {
   return startMockServer(port, host);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMain(import.meta.url)) {
   const port = parseInt(process.env.PORT || '8788', 10);
   startMockServer(port).then((m) => {
     console.log(`Mock MCP server at ${m.url}`);

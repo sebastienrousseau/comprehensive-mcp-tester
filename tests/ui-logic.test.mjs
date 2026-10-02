@@ -22,7 +22,7 @@ function loadClient() {
     location: { pathname: '/', search: '', origin: 'http://127.0.0.1:8787', protocol: 'http:', hostname: '127.0.0.1' },
     navigator: {},
     setInterval: () => 0, clearInterval() {}, setTimeout: () => 0, alert() {}, console,
-    Blob: function () {}, URL: { createObjectURL: () => 'blob:x', revokeObjectURL() {} },
+    Blob: function () {},
     fetch: () => new Promise(() => {}),
     btoa: globalThis.btoa, URL,
   };
@@ -98,6 +98,23 @@ describe('computeStats edge cases', () => {
     c.diag.probes = [{ t: 1, ok: true, ms: 50 }];
     const s = c.computeStats();
     assert.equal(s.uptime, 100); assert.equal(s.curStreak, 0);
+  });
+});
+
+describe('OAuth callback query', () => {
+  test('only the authorization response parameters are kept', () => {
+    const q = c.parseQuery('?__proto__=x&constructor=y&toString=z&extra=1&state=s&code=c&iss=i&error=e&error_description=d&error_uri=u');
+    assert.deepEqual(Object.keys(q), ['state', 'code', 'iss', 'error', 'error_description', 'error_uri']);
+    assert.equal(Object.getPrototypeOf(q), Object.getPrototypeOf(c.parseQuery('')), 'the prototype is untouched');
+    assert.equal(typeof q.toString, 'function');
+  });
+});
+
+describe('diagnostics report', () => {
+  test('a Markdown table cell escapes backslashes before pipes', () => {
+    assert.equal(c.mdCell('a|b'), 'a\\|b');
+    assert.equal(c.mdCell('ends with \\|'), 'ends with \\\\\\|', 'a trailing backslash cannot unescape the pipe');
+    assert.equal(c.mdCell(404), '404');
   });
 });
 
@@ -303,7 +320,7 @@ describe('authorization helpers', () => {
   test('form encoding round-trips and skips empty values', () => {
     const enc = c.formEncode({ a: 'x y', b: 'https://h/p?q=1', skip: '', none: null });
     assert.equal(enc, 'a=x%20y&b=https%3A%2F%2Fh%2Fp%3Fq%3D1');
-    assert.deepEqual({ ...c.parseQuery('?a=x+y&b=https%3A%2F%2Fh') }, { a: 'x y', b: 'https://h' });
+    assert.deepEqual({ ...c.parseQuery('?code=x+y&iss=https%3A%2F%2Fh&&state=') }, { code: 'x y', iss: 'https://h', state: '' });
   });
 
   test('credentials are only sent to the server they were set up for', () => {
@@ -347,5 +364,59 @@ describe('untrusted server data never breaks out of an id attribute (XSS)', () =
     assert.ok(html.includes('id="param-0-category"'));
     const prompt = c.renderPromptDetail({ name: 'ok', arguments: [{ name: 'api_id' }] }, 0);
     assert.ok(prompt.includes('id="prompt-0-api_id"'));
+  });
+});
+
+describe('request log', () => {
+  test('AC-PERF-LOG-01: the log is bounded', () => {
+    const cap = c.LOG_MAX;
+    assert.ok(Number.isInteger(cap) && cap > 0, 'LOG_MAX must be a positive integer');
+    for (let i = 0; i < cap + 250; i++) c.addLog('req', 'tools/list', { body: { n: i } }, null, null, null);
+    assert.equal(c.state.log.length, cap);
+    assert.deepEqual(c.state.log[0].body, { n: cap + 249 }, 'the newest entry is first');
+    assert.deepEqual(c.state.log[cap - 1].body, { n: 250 }, 'the oldest entries are the ones dropped');
+  });
+});
+
+describe('redirect fallback', () => {
+  function pendingWithSecret() {
+    c.auth.pending = {
+      state: 'st-1', verifier: 'v', issuer: 'https://as.example', issSupported: true,
+      tokenEndpoint: 'https://as.example/token', authMethods: ['client_secret_basic'],
+      client: { client_id: 'cc-client', client_secret: 's3cret-value', how: 'pre-registered' },
+      resource: 'https://mcp.example/mcp', scope: 'mcp:read', popup: null, boundTo: 'https://mcp.example/mcp',
+    };
+  }
+
+  test('AC-SEC-SESSION-01: no secret in sessionStorage', () => {
+    let stored = null;
+    c.sessionStorage.setItem = (k, v) => { stored = v; };
+    pendingWithSecret();
+    assert.equal(c.savePendingRedirect(), true);
+    assert.ok(stored, 'nothing was saved');
+    assert.doesNotMatch(stored, /s3cret-value/);
+    const hasSecretField = (v) => v && typeof v === 'object' && Object.entries(v).some(([k, x]) => k === 'client_secret' || hasSecretField(x));
+    assert.equal(hasSecretField(JSON.parse(stored)), false, 'a client_secret field was persisted');
+    assert.equal(JSON.parse(stored).pending.client.client_id, 'cc-client', 'the rest of the client is kept');
+    assert.equal(c.auth.pending.client.client_secret, 's3cret-value', 'the in-memory request keeps its secret');
+  });
+
+  test('resuming without the secret asks for it instead of sending a token request', () => {
+    let stored = null;
+    c.sessionStorage.setItem = (k, v) => { stored = v; };
+    c.sessionStorage.getItem = () => stored;
+    c.sessionStorage.removeItem = () => { stored = null; };
+    pendingWithSecret();
+    c.savePendingRedirect();
+    let fetched = 0;
+    c.fetch = () => { fetched++; return new Promise(() => {}); };
+    c.location.search = '?code=abc&state=st-1&iss=' + encodeURIComponent('https://as.example');
+    c.auth.pending = null;
+    c.resumeRedirectSignIn();
+    assert.equal(fetched, 0, 'a token request was sent without the client secret');
+    const last = c.auth.trace[c.auth.trace.length - 1];
+    assert.equal(last.outcome, 'fail');
+    assert.match(last.detail, /client secret/i);
+    assert.equal(c.auth.busy, false);
   });
 });

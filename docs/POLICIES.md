@@ -4,20 +4,20 @@
 
 | What | Floor | Where it is set | Enforced by |
 | :--- | :--- | :--- | :--- |
-| Node.js (local server, build, tests) | 20 | `engines` in `package.json` | CI runs every suite on Node 20 and 22 |
+| Node.js (local server, build, tests) | 22 | `engines` in `package.json` | CI runs every suite on Node 22 and 24 |
 | Browser (the UI) | Older iPad Safari | Client JS is ES5-style by rule | Review; no automated check yet |
 
 **The rule.** The floor is the oldest Node.js LTS line still receiving maintenance updates, per the [Node.js release schedule](https://github.com/nodejs/Release#release-schedule). CI tests the floor and the active LTS. The floor rises only in a release whose `CHANGELOG.md` entry says so, together with `engines`, the CI matrix and this table.
 
-**Today.** Node 20 reached end of life on 2026-04-30, so under this rule the floor rises to 22 (maintained until 2027-04-30), with 24 as the active LTS. That raise is [#58](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/58); until it ships, the floor stated everywhere is still 20.
+**Today.** The floor is 22 (maintained until 2027-04-30) and the active LTS is 24. It rose from 20 when Node 20 reached end of life on 2026-04-30 ([#58](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/58)). Node 22 leaves maintenance on 2027-04-30, when the floor rises to 24.
 
 No compatibility is claimed with any distribution's packaged Node.js.
 
 ## Versioning
 
-**History.** Releases 0.8.0, 0.9.0 and 0.10.0 each added one roadmap item; none was tagged.
+**History.** Before releases started, the version in the files went 0.8.0, 0.9.0, 0.10.0, one step per roadmap item. None of those was tagged or released, so they are pre-release numbers, and numbering restarted when the project adopted this policy.
 
-**From here, every release increments by exactly 0.0.1:** 0.10.0, then 0.10.1, 0.10.2, and so on. The next minor number is reached only by passing through 0.x.999. Work for the next release happens on a branch named `feat/v<next-version>` (for example `feat/v0.10.1`), which is the only pull request open against `main`; other branches merge into it. A release check that enforces the increment is [#7](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/7).
+**Releases start at 0.0.1, and every release increments by exactly 0.0.1:** 0.0.1, 0.0.2, and so on. 0.1.0 is reached only by passing through 0.0.999. Until the first release, the files say 0.0.0; the release commit sets the version being released. Work for the next release happens on a branch named `feat/v<next-version>` (for example `feat/v0.0.1`), which is the only pull request open against `main`; other branches merge into it. A release check that enforces the increment is [#7](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/7).
 
 **Deprecation.** A feature, configuration variable, mock scenario or `/proxy` field is deprecated before it is removed: the deprecation is announced under **Deprecated** in `CHANGELOG.md`, and the item keeps working for at least one release after that. The removal is then listed under **Removed**.
 

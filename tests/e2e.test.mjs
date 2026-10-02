@@ -10,13 +10,16 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from '../src/hosts/node-server.js';
 import { startMockServer } from './fixtures/mock-mcp-server.mjs';
+import { readFileSync } from 'node:fs';
+import { build } from '../scripts/build.mjs';
 
 let chromium = null;
 try { ({ chromium } = await import('playwright')); } catch { /* not installed */ }
 
 async function launch() {
   if (!chromium) return null;
-  const attempts = [process.env.PW_CHROMIUM_PATH, undefined, '/opt/pw-browsers/chromium'];
+  // An explicit PW_CHROMIUM_PATH is the only browser tried, so a wrong path is noticed
+  const attempts = process.env.PW_CHROMIUM_PATH ? [process.env.PW_CHROMIUM_PATH] : [undefined, '/opt/pw-browsers/chromium'];
   for (const executablePath of attempts) {
     if (executablePath === null) continue;
     try { return await chromium.launch(executablePath ? { executablePath } : {}); } catch { /* try next */ }
@@ -25,9 +28,14 @@ async function launch() {
 }
 
 const browser = await launch();
+// In CI a missing browser must fail the run: skipping would hide every UI regression
+if (!browser && process.env.CI === 'true') {
+  throw new Error('Chromium is required when CI=true: run `npx playwright install --with-deps chromium`, or fix PW_CHROMIUM_PATH');
+}
 const skip = browser ? false : 'Playwright/Chromium not available — run `npx playwright install chromium`';
 
-let mock, server, base, page;
+let mock, server, base, page, firstResponse;
+const cspViolations = [];   // every Content-Security-Policy report, from the page and its OAuth pop-ups
 
 before(async () => {
   if (skip) return;
@@ -36,7 +44,10 @@ before(async () => {
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${server.address().port}`;
   page = await browser.newPage({ viewport: { width: 1100, height: 900 } });
-  await page.goto(base + '/');
+  const watch = (p) => p.on('console', (m) => { if (/Content Security Policy/i.test(m.text())) cspViolations.push(m.text()); });
+  watch(page);
+  page.context().on('page', watch);
+  firstResponse = await page.goto(base + '/');
 });
 
 after(async () => {
@@ -53,16 +64,19 @@ const waitDraftRes = () => page.waitForFunction(() => { const d = window.state.d
 // so asserting on a recorded call right after waiting for `connected` races the network.
 // Poll the mock's own record for the exact (method, path) the assertion needs instead.
 // `after` skips calls recorded earlier, so a path reused across tests can't match a stale one.
+/** The newest recorded call to `method` (on `path`, if given) at index `after` or later */
+function findCall(method, path, after) {
+  const matches = (c) => c.body.method === method && (path === undefined || c.path === path);
+  return mock.calls.slice(after).reverse().find(matches);
+}
+
 async function waitForCall(method, path, { after = 0, timeoutMs = 10000 } = {}) {
   const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    for (let i = mock.calls.length - 1; i >= after; i--) {
-      const c = mock.calls[i];
-      if (c.body.method === method && (path === undefined || c.path === path)) return c;
-    }
+  for (let found = findCall(method, path, after); !found; found = findCall(method, path, after)) {
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${method}${path ? ' to ' + path : ''}`);
     await new Promise((r) => setTimeout(r, 25));
   }
+  return findCall(method, path, after);
 }
 
 test('connects through the real proxy and shows server identity', { skip }, async () => {
@@ -367,8 +381,11 @@ test('OAuth with pop-ups blocked: the page redirects to sign in and resumes on r
   await page.fill('#urlInput', mock.base + '/secure');
   await page.click('#connectBtn');
   await statusIs('Sign-in required');
-  await page.evaluate(() => { window.open = () => null; });
+  await page.evaluate(() => { window.auth.preIssuer = null; window.open = () => null; });
   await page.selectOption('#authMode', 'oauth');
+  // A public client: an earlier test typed client credentials into these fields, and a secret is not kept across a redirect
+  await page.fill('#authClientId', '');
+  await page.fill('#authClientSecret', '');
   await Promise.all([page.waitForURL(base + '/', { timeout: 10000 }), page.click('#authSignIn')]);
   await page.waitForFunction(() => window.state.connected, null, { timeout: 10000 });
   assert.equal(await page.evaluate(() => sessionStorage.getItem('mcp_oauth_pending')), null, 'pending state is cleared');
@@ -378,6 +395,33 @@ test('OAuth with pop-ups blocked: the page redirects to sign in and resumes on r
   assert.ok(trace.includes('Token request:ok'));
   assert.match((await waitForCall('tools/list', '/secure', { after: mark })).headers.authorization, /^Bearer at-/);
   await page.click('#connectBtn');
+});
+
+test('OAuth with pop-ups blocked and a client secret: the secret is not persisted, and is asked for again', { skip }, async () => {
+  const tokensBefore = mock.oauth.tokenRequests.length;
+  await page.evaluate(() => window.forgetCredentials());   // the previous test signed in to /secure
+  await page.fill('#urlInput', mock.base + '/secure');
+  await page.click('#connectBtn');
+  await statusIs('Sign-in required');
+  await page.evaluate(() => { window.open = () => null; });
+  await page.selectOption('#authMode', 'oauth');
+  await page.fill('#authClientId', 'cc-client');
+  await page.fill('#authClientSecret', 'cc-secret');
+  // Record what the page writes to sessionStorage before it navigates away
+  await page.evaluate(() => {
+    const set = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (k, v) { if (String(v).includes('cc-secret')) localStorage.setItem('__secretPersisted', '1'); return set.call(this, k, v); };
+  });
+  await Promise.all([page.waitForURL(base + '/', { timeout: 10000 }), page.click('#authSignIn')]);
+  await page.waitForFunction(() => window.auth.trace.some((s) => s.name === 'Token request' && s.outcome === 'fail'), null, { timeout: 10000 });
+  assert.equal(await page.evaluate(() => localStorage.getItem('__secretPersisted')), null, 'the client secret was written to sessionStorage');
+  assert.equal(mock.oauth.tokenRequests.length, tokensBefore, 'a token request was sent without the secret');
+  assert.match(await page.evaluate(() => window.auth.trace.at(-1).detail), /client secret is not kept across the redirect/);
+  assert.equal(await page.evaluate(() => window.state.connected), false);
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('mcp_oauth_pending')), null, 'pending state is cleared');
+  await page.fill('#authClientId', '');
+  await page.fill('#authClientSecret', '');
+  await page.evaluate(() => { localStorage.removeItem('__secretPersisted'); window.auth.preIssuer = null; window.hideAuthModal(); });
 });
 
 test('credentials are not sent to a different server', { skip }, async () => {
@@ -423,7 +467,25 @@ test('AC-BUG-CONNGEN-02: disconnect invalidates in-flight work', { skip }, async
   assert.equal(await page.evaluate(() => document.body.textContent.includes('slow_list_tool')), false);
 });
 
+test('AC-QA-VERSION-07: built artefacts carry the version', { skip }, async () => {
+  const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  const { sw, mod } = build({ write: false });
+  for (const bundle of [sw, mod]) {
+    const first = bundle.split('\n')[0];
+    assert.ok(first.includes('MCP Tester v' + version + ':'), 'first line does not name v' + version + ': ' + first);
+  }
+  assert.equal((await page.textContent('#appVersion')).trim(), 'v' + version);
+});
+
 test('no horizontal overflow at phone width', { skip }, async () => {
   await page.setViewportSize({ width: 400, height: 800 });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
+});
+
+test('AC-SEC-CSP-02: the app still functions under the policy', { skip }, async () => {
+  const csp = firstResponse.headers()['content-security-policy'];
+  assert.ok(csp && csp.includes("connect-src 'self'"), 'the page was not served with the policy');
+  // Runs last: every flow above (connect, both eras, sign-in with pop-up and redirect, execute,
+  // diagnostics, theme) has run under the policy by now, and none may have been blocked.
+  assert.deepEqual(cspViolations, []);
 });

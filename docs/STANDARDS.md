@@ -14,14 +14,14 @@ The standard is applied in six phases, one per release. This page records where 
 
 | # | Category | Before phase 1 | After phase 1 | Owner of the remaining gaps |
 | :--- | :--- | :---: | :---: | :--- |
-| 1 | Identity and README | 3 | 6 | Licence [#51](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/51); CI-checked install snippets |
-| 2 | Documentation | 2 | 4 | Rendered manual, ADRs, link check [#53](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/53) |
-| 3 | Build and install UX | 4 | 4 | Makefile, install contract [#52](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/52) |
-| 4 | Releases | 1 | 2 | Signed, automated releases with checksums, SBOM, provenance [#54](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/54) |
-| 5 | Packaging and distribution | 1 | 1 | Packaging notes, container image [#55](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/55), [#23](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/23) |
-| 6 | CI quality gates | 5 | 5 | JavaScript lint and complexity gate [#43](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/43); e2e reports [#6](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/6) |
-| 7 | Supply chain and security | 1 | 4 | Pinned actions, Scorecard, audit in CI [#56](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/56) |
-| 8 | Community and governance | 2 | 5 | Governance, support, citation, devcontainer [#56](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/56) |
+| 1 | Identity and README | 4 | 6 | CI-checked install snippets |
+| 2 | Documentation | 2 | 8 | External links not checked; migration guides not applicable |
+| 3 | Build and install UX | 4 | 7 | Install snippets exercised in CI; manpages not applicable |
+| 4 | Releases | 1 | 8 | First release not yet published; no native binaries (roadmap 7) |
+| 5 | Packaging and distribution | 1 | 5 | Container image [#23](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/23) |
+| 6 | CI quality gates | 5 | 8 | Coverage threshold; Halstead difficulty (no ESLint rule); fuzzing |
+| 7 | Supply chain and security | 1 | 8 | Scorecard below 9: code review |
+| 8 | Community and governance | 2 | 9 | A CI-checked table across a repository family (not applicable to one repository) |
 
 ## Evidence by category
 
@@ -41,8 +41,12 @@ The standard is applied in six phases, one per release. This page records where 
 
 ### 2. Documentation
 
-- **Has:** `docs/` as the single documentation root, `DEVELOPMENT.md`, `docs/ARCHITECTURE.md`, `docs/POLICIES.md`, `ROADMAP.md`, `CHANGELOG.md`, acceptance criteria in `docs/acceptance/`.
-- **Missing:** a rendered manual, ADRs for the settled decisions, and a link check in CI (#53).
+- **Has:**
+  - `docs/` as the single documentation root, `DEVELOPMENT.md`, `docs/ARCHITECTURE.md`, `docs/POLICIES.md`, `ROADMAP.md`, `CHANGELOG.md`, acceptance criteria in `docs/acceptance/`.
+  - A rendered user manual built from those same files (MkDocs, pinned by hash) and published to GitHub Pages on each release tag.
+  - ADRs for the settled decisions in `docs/adr/`.
+  - Link checking in CI: every relative link and anchor (`make links`), and the manual's strict build.
+- **Missing:** external links are not checked.
 - **Not applicable:** migration guides from other tools.
 
 ### 3. Build and install UX
@@ -50,21 +54,28 @@ The standard is applied in six phases, one per release. This page records where 
 - **Has:**
   - The native npm flow (`npm install`, `npm test`, `npm run build`, `npm start`).
   - A zero-dependency build that checks its own output.
-- **Missing:** a `Makefile` for dev tasks (#52).
+  - A `Makefile` wrapping the npm scripts (`make check` is the offline CI gate), and the install contract: `make install` / `make uninstall` honour `PREFIX`, `BINDIR`, `LIBDIR` and `DESTDIR`, and CI checks a staged install on every push. The installed command is tested end to end.
+- **Missing:** the README's install snippets are not exercised in CI.
 - **Not applicable:** manpages and shell completions, since there is no CLI with flags.
 
 ### 4. Releases
 
-- **Has:** `CHANGELOG.md`, and CI uploads `dist/` on every run.
+- **Has:**
+  - `CHANGELOG.md`, and a release procedure in `DEVELOPMENT.md`.
+  - A tag-triggered release workflow with a dry run that runs on every change to the release machinery.
+  - A blocking preflight: the tag must be annotated, signed and verified, carry the message `MCP Tester vX.Y.Z`, point at `main`, and match every version reference and the changelog.
+  - `SHA256SUMS`, a CycloneDX SBOM, and Sigstore-signed build provenance and SBOM attestations for every file.
+  - Release notes in a fixed layout, and an audit that reads the published release back.
 - **Missing:**
-  - Tags: 0.8.0 to 0.10.0 were never tagged.
-  - GitHub releases.
-  - A tag-triggered pipeline with a dry run.
-  - Checksums, an SBOM and provenance (#54).
+  - A published release: 0.8.0 to 0.10.0 were never tagged or released, and 0.0.1 will be the first.
+  - Native binaries, which are roadmap item 7 (#26).
 
 ### 5. Packaging and distribution
 
-- **Missing:** packaging notes (#55) and a container image, which is roadmap item 6 (#23).
+- **Has:**
+  - `docs/packaging.md` for repackagers: the two shapes, toolchain, the no-runtime-dependency model, offline build and tests, install layout, and how to verify a release.
+  - A reproducible build, checked in CI on every push: the same commit gives byte-identical files on Linux and macOS, with Node 22 and 24.
+- **Missing:** a licence to redistribute under (#51), and a container image, which is roadmap item 6 (#23).
 - **Not applicable yet:**
   - deb, rpm, AUR, Homebrew and Nix packages, and Repology tracking. The product is a web page plus a small server; revisit with the desktop builds (#26).
   - C-FFI.
@@ -72,48 +83,48 @@ The standard is applied in six phases, one per release. This page records where 
 ### 6. CI quality gates
 
 - **Has:**
-  - Every suite, end-to-end with Chromium included, on Node 20 and 22.
+  - ESLint at zero findings, with the complexity ceilings (cyclomatic 10, cognitive 15, 60 lines per function, 500 per file) enforced and a baseline of existing offenders that may only shrink ([ADR 0007](adr/0007-lint-gate.md)).
+  - Every suite, end-to-end with Chromium included, on Node 22 and 24.
   - The acceptance-criteria traceability check.
-  - The build self-checks.
+  - The e2e suite fails rather than skips in CI, a JUnit report per Node version is uploaded, and failing tests are listed by acceptance criterion in the job summary (#6).
+  - The version check: every version reference agrees, and a release is exactly +0.0.1 (#7).
+  - The build self-checks, and a reproducible-build check.
+  - CodeQL (security-extended queries) on every change.
   - Markdown lint and spelling.
 - **Missing:**
-  - JavaScript lint and a complexity gate (#43).
   - A coverage threshold.
   - An OS matrix.
-  - JUnit reports (#6).
 - **Not applicable:** fuzzing corpora and an API-breakage check. The one input parser, the SSE and JSON handling, could gain fuzz tests later.
 
 ### 7. Supply chain and security
 
 - **Has:**
   - `SECURITY.md` with GitHub private vulnerability reporting.
-  - Dependabot for npm and GitHub Actions.
+  - Release files with a CycloneDX SBOM and Sigstore-signed build provenance, verifiable with `gh attestation verify`.
+  - The manual's Python tooling pinned by hash.
+  - Dependabot for npm, GitHub Actions, the manual's Python packages and `tools/lint`, with a 7-day cooldown.
   - The lockfile committed and `npm ci` in CI.
   - No runtime dependencies.
+  - Every action pinned by commit SHA, enforced by a test; workflows default to read-only tokens.
+  - `npm audit` and `npm audit signatures` in CI, and dependency review on pull requests.
+  - OpenSSF Scorecard weekly on `main`, reporting to code scanning.
 - **Missing:**
-  - Actions pinned by commit SHA; the new docs-lint job's actions are pinned, the older ones are not.
-  - An OpenSSF Scorecard run.
-  - `npm audit` in CI.
-  - REUSE / SPDX headers, which wait for the licence (#56, #51).
-- **Not applicable yet:** signing keys (`KEYS.asc`), until releases are signed (#54).
+  - A Scorecard of 9 or more: branch protection and review by someone other than the author are repository settings, and the licence (#51).
+  - REUSE / SPDX headers, which wait for the licence (#51).
+- **Not applicable:** `KEYS.asc`. Tags are signed with the maintainer's SSH key, which GitHub verifies against the key registered on their account, and release files carry Sigstore attestations instead of key signatures.
 
 ### 8. Community and governance
 
-- **Has:** `CODE_OF_CONDUCT.md`, `CONTRIBUTING.md` (with the acceptance-criteria convention), issue and pull request templates, `.editorconfig`, and a docs-lint CI job.
-- **Missing:**
-  - `GOVERNANCE.md` and `SUPPORT.md`.
-  - `CITATION.cff`.
-  - A pre-commit config.
-  - A devcontainer.
-  - An `AGENTS.md`; the agent rules live in `CLAUDE.md` today (#56).
+- **Has:** `CODE_OF_CONDUCT.md`, `CONTRIBUTING.md` (with the acceptance-criteria convention), `GOVERNANCE.md`, `SUPPORT.md`, `CITATION.cff`, `AGENTS.md` (which `CLAUDE.md` imports), issue and pull request templates, `.editorconfig`, a pinned pre-commit configuration, a devcontainer checked in CI, and a docs-lint CI job.
+- **Missing:** nothing a single repository can add; a CI-checked table across a repository family does not apply.
 
 ## Phases
 
 | Phase | Ships | Issue | State |
 | :--- | :--- | :--- | :--- |
 | 1 | Normalised layout: `docs/` root, `DEVELOPMENT.md`, community files, docs-lint CI | This change | Done |
-| 2 | Makefile and install UX | [#52](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/52) | Open |
-| 3 | Rendered manual and link check | [#53](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/53) | Open |
-| 4 | Automated, signed releases | [#54](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/54) | Open |
-| 5 | Packaging | [#55](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/55) | Open |
-| 6 | Polish: Scorecard, pinned actions, devcontainer, governance files | [#56](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/56) | Open |
+| 2 | Makefile and install UX | [#52](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/52) | Done |
+| 3 | Rendered manual and link check | [#53](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/53) | Done |
+| 4 | Automated, signed releases | [#54](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/54) | Done |
+| 5 | Packaging | [#55](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/55) | Done |
+| 6 | Polish: Scorecard, pinned actions, devcontainer, governance files | [#56](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/56) | Done |
