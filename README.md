@@ -1,4 +1,4 @@
-<!-- SPDX-License-Identifier: NOASSERTION (no licence chosen yet: https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/51) -->
+<!-- SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 -->
 
 <p align="center">
   <img src="docs/assets/logo.svg" alt="MCP Tester logo" width="128" />
@@ -14,7 +14,7 @@
   <a href="https://github.com/mollerade/comprehensive-mcp-tester/actions"><img src="https://img.shields.io/github/actions/workflow/status/mollerade/comprehensive-mcp-tester/ci.yml?branch=main&style=for-the-badge&logo=github&label=build" alt="Build" /></a>
   <a href="#install"><img src="https://img.shields.io/badge/registry-not%20published-lightgrey?style=for-the-badge&color=fc8d62&logo=nodedotjs" alt="Registry" /></a>
   <a href="#documentation"><img src="https://img.shields.io/badge/docs-in%20repo-blue?style=for-the-badge&labelColor=555555&logo=markdown" alt="Docs" /></a>
-  <a href="https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/51"><img src="https://img.shields.io/badge/license-not%20yet%20chosen-blue.svg?style=for-the-badge" alt="License: not yet chosen" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm--Noncommercial--1.0.0-blue.svg?style=for-the-badge" alt="License: PolyForm-Noncommercial-1.0.0" /></a>
   <a href="https://github.com/mollerade/comprehensive-mcp-tester/blob/main/docs/POLICIES.md"><img src="https://img.shields.io/badge/node-22%2B-93450a.svg?style=for-the-badge&logo=nodedotjs" alt="Node.js 22 or later" /></a>
 </p>
 
@@ -211,7 +211,6 @@ The bundled mock server (`npm run mock`) is the example set. Point the tester at
 - **Load or performance testing.** The health monitor measures availability and latency one request at a time; it does not generate load.
 - **General REST APIs.** The tester is MCP-shaped on purpose and is not a general HTTP client.
 - **The hosted Worker with real credentials, as deployed by default.** It is public: put Cloudflare Access in front of it first (see [Security](#security)), or use the local server.
-- **Anything that needs a licence.** The project has no licence yet ([#51](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/51)), so it cannot be redistributed or adopted by an organisation.
 
 ---
 
@@ -270,7 +269,7 @@ Report vulnerabilities according to [`SECURITY.md`](SECURITY.md).
 
 ## Stability guarantees
 
-MCP Tester is pre-1.0 (currently 0.0.0: nothing released yet). Releases start at 0.0.1 and each one increments the version by exactly 0.0.1 (0.0.1, 0.0.2, ...); any release may change the UI. The 0.8.0 to 0.10.0 mentioned elsewhere were pre-release numbers, never tagged or released.
+MCP Tester is pre-1.0 (currently 0.0.1). Releases start at 0.0.1 and each one increments the version by exactly 0.0.1 (0.0.1, 0.0.2, ...); any release may change the UI. The 0.8.0 to 0.10.0 mentioned elsewhere were pre-release numbers, never tagged or released.
 
 **What counts as breaking.** A change is breaking when it changes what someone outside the UI relies on, even if no code signature moves:
 
@@ -287,4 +286,6 @@ MCP Tester is pre-1.0 (currently 0.0.0: nothing released yet). Releases start at
 
 ## License
 
-Not licensed yet. The repository has no `LICENSE` file, so all rights are reserved by the author and nobody else may use, modify or redistribute the code. Choosing a licence is the author's decision, tracked in [#51](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/51).
+Licensed under the PolyForm Noncommercial License 1.0.0 ([LICENSE](LICENSE)): use, copy, modify and share for any noncommercial purpose, including personal evaluation, research and education. Commercial use needs a separate agreement with the author.
+
+Required Notice: Copyright mollerade (<https://github.com/mollerade/comprehensive-mcp-tester>)

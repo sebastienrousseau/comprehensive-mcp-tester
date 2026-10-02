@@ -2,9 +2,9 @@
 
 For anyone repackaging MCP Tester: a distribution, an internal software catalogue, or a platform team preparing it for a company network. Everything here is checked against the repository; where something is not settled yet, it says so.
 
-## Before you start: there is no licence yet
+## Licence
 
-The project has no licence ([#51](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/51)), so the code is "all rights reserved" by its author and cannot be redistributed. Packaging for your own evaluation is fine; publishing a package is not, until the author chooses a licence.
+The project is licensed under the PolyForm Noncommercial License 1.0.0 ([LICENSE](../LICENSE)): a package may be built and shared for noncommercial use, and every copy must carry the licence text or its URL and the Required Notice from the README.
 
 ## What there is to package
 

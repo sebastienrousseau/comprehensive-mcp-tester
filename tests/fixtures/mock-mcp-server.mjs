@@ -45,7 +45,7 @@
  */
 import http from 'node:http';
 import { randomUUID, createHash } from 'node:crypto';
-import { reply, rpcErr, sleep } from './mock/protocol.mjs';
+import { reply, rpcErr, sleep, MAX_SLEEP_MS } from './mock/protocol.mjs';
 import { resolveScenario, scenarioForIssuerPath, listScenarios, SCENARIOS } from './mock/scenarios/index.mjs';
 import { isMain } from '../../scripts/is-main.mjs';
 
@@ -53,7 +53,7 @@ export { TOOLS, MODERN_VERSION } from './mock/protocol.mjs';
 
 const PRM_PREFIX = '/.well-known/oauth-protected-resource';
 const AS_PREFIX = '/.well-known/oauth-authorization-server';
-const MAX_DELAY_MS = 30000;
+const MAX_DELAY_MS = MAX_SLEEP_MS;
 const FALLBACK = SCENARIOS.find((s) => s.name === 'mcp');   // any other path behaves like /mcp
 
 function asMetadata(base, issuerPath = '', pkceMethods = ['S256']) {
