@@ -14,13 +14,13 @@ The standard is applied in six phases, one per release. This page records where 
 
 | # | Category | Before phase 1 | After phase 1 | Owner of the remaining gaps |
 | :--- | :--- | :---: | :---: | :--- |
-| 1 | Identity and README | 3 | 6 | Licence [#51](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/51); CI-checked install snippets |
+| 1 | Identity and README | 4 | 6 | CI-checked install snippets |
 | 2 | Documentation | 2 | 8 | External links not checked; migration guides not applicable |
 | 3 | Build and install UX | 4 | 7 | Install snippets exercised in CI; manpages not applicable |
 | 4 | Releases | 1 | 8 | First release not yet published; no native binaries (roadmap 7) |
-| 5 | Packaging and distribution | 1 | 5 | Licence (#51) blocks redistribution; container image [#23](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/23) |
+| 5 | Packaging and distribution | 1 | 5 | Container image [#23](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/23) |
 | 6 | CI quality gates | 5 | 8 | Coverage threshold; Halstead difficulty (no ESLint rule); fuzzing |
-| 7 | Supply chain and security | 1 | 8 | Scorecard below 9: branch protection, code review and a licence (#51) |
+| 7 | Supply chain and security | 1 | 8 | Scorecard below 9: code review |
 | 8 | Community and governance | 2 | 9 | A CI-checked table across a repository family (not applicable to one repository) |
 
 ## Evidence by category

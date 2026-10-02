@@ -2,7 +2,7 @@
 
 Thank you for helping. This page covers how to propose a change; [DEVELOPMENT.md](DEVELOPMENT.md) covers setup and running the checks.
 
-Before you start: the project has no licence yet ([#51](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/51)). Until the author chooses one, contributions cannot be accepted under clear terms, so please check that issue first.
+By contributing you agree that your contribution is licensed under the PolyForm Noncommercial License 1.0.0 ([LICENSE](LICENSE)).
 
 ## Reporting bugs and asking for features
 

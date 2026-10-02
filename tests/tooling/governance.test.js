@@ -42,3 +42,15 @@ test('every GitHub Action is pinned by commit', () => {
     }
   }
 });
+
+test('AC-GOV-COMPLIANCE-02: license is declared once chosen', () => {
+  assert.ok(existsSync(join(ROOT, 'LICENSE')), 'missing LICENSE');
+  assert.ok(read('LICENSE').trim().length > 100, 'LICENSE is a stub');
+  const spdx = JSON.parse(read('package.json')).license;
+  assert.match(spdx, /^[A-Za-z0-9.+-]+$/, 'package.json license is not an SPDX identifier');
+  assert.equal(JSON.parse(read('package-lock.json')).packages[''].license, spdx, 'package-lock.json disagrees');
+  assert.match(read('CITATION.cff'), new RegExp('^license: ' + spdx.replace(/[.+-]/g, '\\$&') + '$', 'm'), 'CITATION.cff disagrees');
+  assert.match(read('README.md'), new RegExp('^<!-- SPDX-License-Identifier: ' + spdx.replace(/[.+-]/g, '\\$&') + ' -->'), 'README has no SPDX line');
+  assert.ok(read('README.md').includes('](LICENSE)'), 'README does not link LICENSE');
+  assert.match(read('README.md'), /^Required Notice: Copyright /m, 'README has no Required Notice line (PolyForm, Notices)');
+});

@@ -6,8 +6,11 @@ Releases start at 0.0.1 and each one increments the version by exactly 0.0.1 ([p
 
 ## [Unreleased]
 
+## [0.0.1] - 2026-10-02
+
 ### Added
 
+- The licence: PolyForm Noncommercial License 1.0.0, chosen by the upstream author, in `LICENSE`, `package.json` and the README ([#51](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/51), [#46](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/46)).
 - `npm run test:ci`: every suite with a JUnit report per Node version; CI uploads the reports and lists failing tests by acceptance criterion in the job summary. The e2e suite fails instead of skipping when Chromium is missing and `CI=true`, and every CI job has a timeout of 15 minutes or less ([#6](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/6)).
 - `npm run version:bump` and `npm run version:check`: the next version (exactly +0.0.1) set everywhere at once, the changelog's Unreleased section dated, and CI rejecting any other version. The UI header and the first line of the built Worker show the version ([#7](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/7)).
 - A lint gate: ESLint in CI at zero findings, the client held to ES5 classic scripts, and the complexity ceilings enforced with a baseline of existing offenders that may only shrink. ESLint installs from `tools/lint`, so the project's own install stays Playwright only ([#43](https://github.com/sebastienrousseau/comprehensive-mcp-tester/issues/43)).
@@ -67,7 +70,8 @@ Releases start at 0.0.1 and each one increments the version by exactly 0.0.1 ([p
 
 - First release: one codebase served as a Cloudflare Worker and a local Node server, with the MCP proxy core, the single-file UI, diagnostics and the health monitor.
 
-[Unreleased]: https://github.com/mollerade/comprehensive-mcp-tester/compare/73359a7...HEAD
+[Unreleased]: https://github.com/sebastienrousseau/comprehensive-mcp-tester/compare/v0.0.1...HEAD
+[0.0.1]: https://github.com/sebastienrousseau/comprehensive-mcp-tester/compare/73359a7...v0.0.1
 [0.10.0]: https://github.com/mollerade/comprehensive-mcp-tester/commit/73359a7
 [0.9.0]: https://github.com/mollerade/comprehensive-mcp-tester/commit/f15ce72
 [0.8.0]: https://github.com/mollerade/comprehensive-mcp-tester/commit/5bc37f5
