@@ -18,10 +18,10 @@ test('AC-REL-V001-01: versions agree', () => {
   assert.notEqual(version, '0.0.0', 'the release branch is not bumped yet');
   const consistent = spawnSync(process.execPath, ['scripts/check-versions.mjs'], { cwd: ROOT, encoding: 'utf8' });
   assert.equal(consistent.status, 0, consistent.stderr);
-  assert.match(consistent.stdout, new RegExp(`versions ok \\(${version.replace(/\./g, '\\.')}\\)`));
+  assert.ok(consistent.stdout.includes(`versions ok (${version})`), consistent.stdout);
   const policy = spawnSync(process.execPath, ['scripts/version.mjs', 'check'], { cwd: ROOT, encoding: 'utf8' });
   assert.equal(policy.status, 0, policy.stderr);
-  assert.match(read('README.md'), new RegExp(`\\bcurrently ${version.replace(/\./g, '\\.')}\\b`));
+  assert.ok(read('README.md').includes(`(currently ${version})`), `README does not say "currently ${version}"`);
   assert.ok(read('CHANGELOG.md').split('\n').some((l) => l.startsWith(`## [${version}]`)), `CHANGELOG.md has a [${version}] heading`);
 });
 
