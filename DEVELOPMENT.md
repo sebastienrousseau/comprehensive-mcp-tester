@@ -30,7 +30,7 @@ Edit `src/`, never `dist/`: `dist/` is generated and ignored by git. How the pie
 
 `npm test` runs every suite with Node's built-in runner:
 
-- **proxy**: the core against a mock server. Covers timing, timeouts, retries with backoff, network failures, Accept repair, header filtering and the allowlist. It also covers the mock server's scenario registry: discovery, the original paths as aliases, parallel instances, the delay knob, and that each violation scenario breaks the rule it names.
+- **proxy**: the core against a mock server. Covers timing, timeouts, retries with backoff (read-only requests only), the 8 MB response cap, SSE responses on held-open streams, network failures, Accept repair, header filtering and the allowlist. It also covers the mock server's scenario registry: discovery, the original paths as aliases, parallel instances, the delay knob, and that each violation scenario breaks the rule it names.
 - **hosts**: both Cloudflare bundles, executed as built, and the local server, including its security checks.
 - **ui-logic**: the shipped client JS in a VM. Covers the percentile and uptime maths, flap streaks, schema-based request suggestions and JSON-RPC ids.
 - **e2e**: Chromium drives the real UI through the local server to the mock MCP server. Covers both protocol eras, OAuth sign-in (pop-up and redirect), the `iss` mix-up rejection, client credentials, connect, filter, suggested requests, form and JSON execution, error responses, resources, prompts, log, diagnostics, theme, saved servers, timeouts and phone-width layout.
@@ -60,7 +60,7 @@ test('AC-QA-TRACE-01: covered AC passes', () => { /* ... */ });
 | Test (Node 22, 24) | No known vulnerability, and valid registry signatures | `npm audit && npm audit signatures` |
 | Test (Node 22, 24) | The build is reproducible: a rebuild from a fresh export is byte-identical | see the CI step |
 | Dependency review (pull requests) | No new dependency with a known vulnerability; skipped with a warning where the repository's dependency graph is off (`scripts/dependency-graph.mjs`) | not local |
-| CodeQL | Static analysis of every JavaScript file (security-extended queries) | not local |
+| CodeQL | Static analysis of every JavaScript file and of the workflows under `.github/workflows/` (security-extended queries) | not local |
 | Devcontainer (when it changes, and weekly) | The devcontainer builds and the full suite passes inside it | open the repository in a container |
 | Scorecard (`main`, weekly) | OpenSSF Scorecard, published to code scanning | not local |
 | Lint | ESLint at zero findings, the client ES5 and module-free, and the complexity ceilings (cyclomatic 10, cognitive 15, 60 lines per function, 500 per file) with a baseline of existing offenders that may only shrink | `npm run lint` |

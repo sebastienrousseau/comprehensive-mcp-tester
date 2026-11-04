@@ -38,7 +38,7 @@ export default [
   },
   {
     // Callbacks passed to page.evaluate() run in the browser under test
-    files: ['tests/e2e.test.mjs'],
+    files: ['tests/e2e*.test.mjs'],
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
   },
   {

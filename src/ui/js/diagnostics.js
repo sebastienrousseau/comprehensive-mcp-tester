@@ -72,6 +72,10 @@ function fmtMs(v) {
   if (v >= 1000) return (v/1000).toFixed(2) + 's';
   return Math.round(v) + 'ms';
 }
+function fmtBytes(n) {
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' bytes';
+}
+
 function fmtClock(t) {
   var d = new Date(t);
   return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0') + ':' + String(d.getSeconds()).padStart(2,'0');

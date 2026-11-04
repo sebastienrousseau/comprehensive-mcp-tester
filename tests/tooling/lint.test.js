@@ -68,3 +68,11 @@ test('the repository passes the lint gate', { skip: needsEslint }, () => {
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /lint ok/);
 });
+
+test('AC-PROXY-PIPE-02: complexity within the ceilings', { skip: needsEslint }, async () => {
+  const baseline = JSON.parse(readFileSync(join(ROOT, 'tools/lint/complexity-baseline.json'), 'utf8'));
+  assert.equal(baseline['src/core/proxy.js'], undefined, 'src/core/proxy.js must leave the complexity baseline');
+  const { loadEslint } = await import('../../tools/lint/run.mjs');
+  const [result] = await (await loadEslint()).lintFiles([join(ROOT, 'src/core/proxy.js')]);
+  assert.deepEqual(result.messages.map((m) => `${m.line}: ${m.message}`), []);
+});

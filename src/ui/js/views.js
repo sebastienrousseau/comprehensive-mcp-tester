@@ -352,16 +352,46 @@ function runAndShow(key, body, btnId, btnLabel) {
   var d = getDraft(key);
   d.lastReq = body; d.lastRes = undefined; d.lastMeta = null;
   renderReqRes(key);
-  var btn = document.getElementById(btnId);
-  if (btn) { btn.disabled = true; btn.textContent = 'Running...'; }
-  return sendBody(body, 'call').then(function(r) {
-    if (btn) { btn.disabled = false; btn.textContent = btnLabel; }
+  var run = startRun(key, body, document.getElementById(btnId), btnLabel);
+  return sendBody(body, 'call', run.signal).then(function(r) {
+    endRun(key, run);
     if (r.stale) return r;                       // answered after a reconnect: not this server's draft
     d.lastRes = r.data;
     d.lastMeta = { status: r.status, ms: r.diag ? r.diag.totalMs : null, clientMs: r.clientMs, at: Date.now() };
     renderReqRes(key);
     return r;
   });
+}
+
+/* ── Running calls: the button shows progress, and a Cancel button sits beside it ── */
+function startRun(key, body, btn, label) {
+  var controller = typeof AbortController === 'function' ? new AbortController() : null;
+  var run = { controller: controller, signal: controller ? controller.signal : undefined, body: body, btn: btn, label: label };
+  state.running[key] = run;
+  if (btn) {
+    btn.disabled = true; btn.textContent = 'Running...';
+    if (controller) btn.insertAdjacentHTML('afterend', '<button class="btn btn-ghost btn-sm" id="cancel-' + key + '" onclick="cancelRun(\'' + key + '\')">Cancel</button>');
+  }
+  return run;
+}
+
+function endRun(key, run) {
+  if (state.running[key] === run) delete state.running[key];
+  if (run.btn) { run.btn.disabled = false; run.btn.textContent = run.label; }
+  var cancel = document.getElementById('cancel-' + key);
+  if (cancel) cancel.remove();
+}
+
+/* Frees the UI at once, stops the request (the proxy then stops its fetch), and tells
+   the server, which may still be working on it (spec: notifications/cancelled) */
+function cancelRun(key) {
+  var run = state.running[key];
+  if (!run) return;
+  endRun(key, run);
+  run.controller.abort();
+  if (run.body.id !== undefined && run.body.method !== 'initialize') {
+    sendBody(buildBody('notifications/cancelled', { requestId: run.body.id, reason: 'Cancelled by the user' }), 'cancel');
+  }
 }
 
 /* ── Invoke ── */

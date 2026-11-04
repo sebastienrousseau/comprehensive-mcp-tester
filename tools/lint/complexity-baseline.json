@@ -1,29 +1,7 @@
 {
-  "src/core/proxy.js": {
-    "complexity": {
-      "proxyMcp": 39
-    },
-    "max-lines-per-function": {
-      "proxyMcp": 145
-    },
-    "sonarjs/cognitive-complexity": {
-      "proxyMcp": 41
-    }
-  },
-  "src/hosts/cloudflare.js": {
-    "complexity": {
-      "handleRequest": 15
-    }
-  },
   "src/hosts/node-server.js": {
     "complexity": {
-      "(unnamed #1)": 20
-    },
-    "max-lines-per-function": {
-      "createServer": 63
-    },
-    "sonarjs/cognitive-complexity": {
-      "(unnamed #1)": 21
+      "(unnamed #1)": 12
     }
   },
   "src/ui/js/auth.js": {
@@ -62,10 +40,10 @@
   },
   "src/ui/js/log.js": {
     "complexity": {
-      "renderLog": 22
+      "renderLog": 14
     },
     "sonarjs/cognitive-complexity": {
-      "renderLog": 50
+      "renderLog": 26
     }
   },
   "src/ui/js/schema.js": {

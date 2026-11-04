@@ -15,6 +15,8 @@ const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 import { assembleHtml } from '../src/ui/assemble.js';
 import { createServer } from '../src/hosts/node-server.js';
 import { startMockServer } from './fixtures/mock-mcp-server.mjs';
+import { parseConfig } from '../src/core/config.js';
+import { proxyMcp } from '../src/core/proxy.js';
 
 let mock;
 before(async () => { mock = await startMockServer(); });
@@ -32,7 +34,7 @@ describe('Cloudflare Service Worker bundle (dist/worker.js)', () => {
     const { sw } = build({ write: false });
     const ctx = vm.createContext({
       addEventListener: (type, fn) => { if (type === 'fetch') handler = fn; },
-      Request, Response, Headers, URL, fetch, AbortController, setTimeout, clearTimeout, Date, JSON, console,
+      Request, Response, Headers, URL, fetch, AbortController, TextDecoder, setTimeout, clearTimeout, Date, JSON, console,
       ...globals,
     });
     vm.runInContext(sw, ctx, { filename: 'worker.js' });
@@ -273,4 +275,184 @@ test('AC-SEC-CSP-01: both hosts send the policy', async () => {
   } finally {
     await new Promise((r) => { server.closeAllConnections?.(); server.close(r); });
   }
+});
+
+// ── Invalid headers and internal errors (#87) ─────────────────────────────
+
+const withHeaders = (headers) => JSON.stringify({ url: 'https://mcp.example/mcp', headers, body: '{}' });
+
+test('AC-PROXY-HDR-01: bad name gives 400', async () => {
+  let handler;
+  const { sw } = build({ write: false });
+  vm.runInContext(sw, vm.createContext({
+    addEventListener: (t, fn) => { handler = fn; }, Request, Response, Headers, URL, fetch, AbortController, TextDecoder, setTimeout, clearTimeout, Date, JSON, console,
+  }), { filename: 'worker.js' });
+  const worker = (body) => new Promise((resolve) => handler({ request: new Request('https://w.dev/proxy', { method: 'POST', body }), respondWith: resolve }));
+
+  const server = createServer({ allowedOrigins: '', allowedHosts: '' });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const node = (body) => fetch(`http://127.0.0.1:${server.address().port}/proxy`, { method: 'POST', body, headers: { 'Content-Type': 'application/json' } });
+  try {
+    for (const host of [worker, node]) {
+      const res = await host(withHeaders({ 'bad name': 'x' }));
+      assert.equal(res.status, 400);
+      assert.match((await res.json()).error, /header name "bad name"/);
+    }
+  } finally {
+    server.closeAllConnections?.();
+    await new Promise((r) => server.close(r));
+  }
+});
+
+test('AC-PROXY-HDR-02: Worker never throws', async () => {
+  let handler;
+  const { sw } = build({ write: false });
+  const errors = [];
+  const Broken = function () { throw new Error('boom'); };
+  vm.runInContext(sw, vm.createContext({
+    addEventListener: (t, fn) => { handler = fn; }, Request, Response, Headers: Broken, URL, fetch, AbortController, TextDecoder, setTimeout, clearTimeout, Date, JSON,
+    console: { error: (...a) => errors.push(a) },
+  }), { filename: 'worker.js' });
+  const res = await new Promise((resolve, reject) => {
+    try { handler({ request: new Request('https://w.dev/proxy', { method: 'POST', body: withHeaders({ a: '1' }) }), respondWith: (p) => Promise.resolve(p).then(resolve, reject) }); }
+    catch (e) { reject(e); }
+  });
+  assert.equal(res.status, 500);
+  assert.match(res.headers.get('content-type'), /application\/json/);
+  assert.deepEqual(await res.json(), { error: 'Internal error' }, 'no detail leaks to the caller');
+  assert.equal(errors.length, 1, 'the detail goes to the Worker log');
+});
+
+// ── Cancellation reaches the origin (#86) ─────────────────────────────────
+
+/** An origin that accepts connections and never answers; records when each socket closes. */
+async function hangingOrigin() {
+  const http = await import('node:http');
+  const closed = [];
+  const server = http.createServer(() => {});
+  server.on('connection', (s) => s.on('close', () => closed.push(Date.now())));
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  return { url: `http://127.0.0.1:${server.address().port}/mcp`, closed, close: () => new Promise((r) => { server.closeAllConnections(); server.close(r); }) };
+}
+
+async function closedWithin(origin, since, ms) {
+  while (Date.now() - since < ms) {
+    if (origin.closed.length) return origin.closed[0] - since;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  return null;
+}
+
+test('AC-PROXY-CANCEL-01: hosts stop the upstream fetch', async () => {
+  const payload = (url) => JSON.stringify({ url, timeoutMs: 60000, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'x' } }) });
+
+  // Local server: the browser's request goes away
+  const origin = await hangingOrigin();
+  const server = createServer({ allowedOrigins: '', allowedHosts: '' });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  try {
+    const client = new AbortController();
+    const res = fetch(`http://127.0.0.1:${server.address().port}/proxy`, { method: 'POST', body: payload(origin.url), headers: { 'Content-Type': 'application/json' }, signal: client.signal });
+    await new Promise((r) => setTimeout(r, 100));
+    client.abort();
+    const abortedAt = Date.now();
+    await res.catch(() => {});
+    const took = await closedWithin(origin, abortedAt, 500);
+    assert.notEqual(took, null, 'local server: the origin socket is still open 500 ms after the client left');
+  } finally {
+    server.closeAllConnections?.();
+    await new Promise((r) => server.close(r));
+    await origin.close();
+  }
+
+  // Worker: request.signal aborts
+  const origin2 = await hangingOrigin();
+  try {
+    let handler;
+    vm.runInContext(build({ write: false }).sw, vm.createContext({
+      addEventListener: (t, fn) => { handler = fn; }, Request, Response, Headers, URL, fetch, AbortController, TextDecoder, setTimeout, clearTimeout, Date, JSON, console,
+    }), { filename: 'worker.js' });
+    const client = new AbortController();
+    const pending = new Promise((resolve) => handler({ request: new Request('https://w.dev/proxy', { method: 'POST', body: payload(origin2.url), signal: client.signal }), respondWith: resolve }));
+    await new Promise((r) => setTimeout(r, 100));
+    client.abort();
+    const abortedAt = Date.now();
+    const took = await closedWithin(origin2, abortedAt, 500);
+    assert.notEqual(took, null, 'Worker: the origin socket is still open 500 ms after the client left');
+    const env = await (await pending).json();
+    assert.equal(env.diag.errorType, 'cancelled');
+  } finally {
+    await origin2.close();
+  }
+});
+
+// ── Operator configuration (#88) ──────────────────────────────────────────
+
+const SERVER = join(ROOT_DIR, 'src', 'hosts', 'node-server.js');
+
+/** Runs the local server with `env` until it prints its startup line or exits → { code, out, err } */
+function startWith(env, args = []) {
+  const child = spawn(process.execPath, [SERVER, ...args], { env: { PATH: process.env.PATH, PORT: '0', HOST: '127.0.0.1', ...env } });
+  let out = '', err = '';
+  child.stdout.on('data', (c) => { out += c; });
+  child.stderr.on('data', (c) => { err += c; });
+  return new Promise((resolve) => {
+    const done = (code) => { clearInterval(poll); child.kill(); resolve({ code, out, err }); };
+    const poll = setInterval(() => { if (/Limits:.*\n/.test(out)) done(null); }, 20);
+    child.on('exit', (code) => done(code));
+  });
+}
+
+test('AC-OPS-CONFIG-01: invalid settings fail fast', async () => {
+  const r = await startWith({ MCP_TESTER_ALLOWED_TARGETS: 'not a url' });
+  assert.notEqual(r.code, 0);
+  assert.notEqual(r.code, null, 'the server started anyway');
+  assert.match(r.err, /MCP_TESTER_ALLOWED_TARGETS/);
+  assert.match(r.err, /"not a url"/);
+  const limit = await startWith({ MCP_TESTER_MAX_RETRIES: '9' });
+  assert.notEqual(limit.code, null);
+  assert.match(limit.err, /MCP_TESTER_MAX_RETRIES/);
+});
+
+test('AC-OPS-CONFIG-02: the old name still works, with a warning', async () => {
+  const r = await startWith({ ALLOWED_ORIGINS: 'example.com' });
+  assert.equal(r.code, null, 'the server starts: ' + r.err);
+  assert.match(r.err, /ALLOWED_ORIGINS is deprecated.*MCP_TESTER_ALLOWED_TARGETS/);
+  const { config } = parseConfig({ ALLOWED_ORIGINS: 'example.com' });
+  const fake = async () => new Response('{}');
+  const allowed = await proxyMcp({ url: 'https://example.com/mcp', body: '{}' }, { fetch: fake, allowedOrigins: config.allowedTargets });
+  assert.equal(allowed.json.status, 200);
+  const other = await proxyMcp({ url: 'https://other.example/mcp', body: '{}' }, { fetch: fake, allowedOrigins: config.allowedTargets });
+  assert.equal(other.status, 403);
+});
+
+test('AC-OPS-CONFIG-03: effective policy printed', async () => {
+  const open = await startWith({});
+  assert.match(open.out, /Allowed targets: +any/);
+  assert.match(open.out, /Limits: +timeout up to 120000 ms, retries up to 3, responses up to 8388608 bytes/);
+  assert.match(open.out, /Bind: +127\.0\.0\.1:\d+ \(loopback only\)/);
+  const strict = await startWith({ MCP_TESTER_ALLOWED_TARGETS: 'https://developer.hsbc.com, https://auth.example:8443', MCP_TESTER_MAX_TIMEOUT_MS: '30000', HOST: '0.0.0.0' });
+  assert.match(strict.out, /Allowed targets: +https:\/\/developer\.hsbc\.com, https:\/\/auth\.example:8443/);
+  assert.match(strict.out, /timeout up to 30000 ms/);
+  assert.match(strict.out, /Bind: +0\.0\.0\.0:\d+ \(all interfaces/);
+  const help = await startWith({}, ['--help']);
+  assert.equal(help.code, 0);
+  for (const v of ['MCP_TESTER_ALLOWED_TARGETS', 'MCP_TESTER_MAX_TIMEOUT_MS', 'MCP_TESTER_MAX_RETRIES', 'MCP_TESTER_MAX_RESPONSE_BYTES', 'PORT', 'HOST']) assert.match(help.out, new RegExp(v));
+});
+
+test('Worker: settings are validated, and a bad one is named in a JSON 500 on /proxy', async () => {
+  let handler;
+  vm.runInContext(build({ write: false }).sw, vm.createContext({
+    addEventListener: (t, fn) => { handler = fn; }, Request, Response, Headers, URL, fetch, AbortController, TextDecoder, setTimeout, clearTimeout, Date, JSON, console,
+    MCP_TESTER_ALLOWED_TARGETS: 'ftp://files.example',
+  }), { filename: 'worker.js' });
+  const res = await new Promise((resolve) => handler({ request: new Request('https://w.dev/proxy', { method: 'POST', body: initPayload(mock.url) }), respondWith: resolve }));
+  assert.equal(res.status, 500);
+  assert.match((await res.json()).error, /MCP_TESTER_ALLOWED_TARGETS.*ftp:\/\/files\.example/);
+  const { mod } = build({ write: false });
+  const file = join(mkdtempSync(join(tmpdir(), 'mcpt-')), 'worker.mjs');
+  writeFileSync(file, mod);
+  const worker = (await import(pathToFileURL(file).href)).default;
+  const blocked = await worker.fetch(new Request('https://w.dev/proxy', { method: 'POST', body: initPayload(mock.url) }), { MCP_TESTER_ALLOWED_TARGETS: 'https://x.com' });
+  assert.equal(blocked.status, 403);
 });

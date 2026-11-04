@@ -171,11 +171,17 @@ Every sign-in step appears in a trace (ok / warning / failed) and in the Log, be
 
 | Variable | Where | Meaning |
 | :--- | :--- | :--- |
-| `ALLOWED_ORIGINS` | both | Comma-separated hosts the proxy may reach, e.g. `developer.hsbc.com`. Include your authorization server's host if you sign in with OAuth. Empty means any. |
+| `MCP_TESTER_ALLOWED_TARGETS` | both | Comma-separated origins the proxy may reach, e.g. `https://developer.hsbc.com`. Include your authorization server if you sign in with OAuth. Unset means any. |
+| `MCP_TESTER_MAX_TIMEOUT_MS` | both | Longest timeout a request may ask for, 500 to 120000 (default 120000). |
+| `MCP_TESTER_MAX_RETRIES` | both | Most retries a request may ask for, 0 to 3 (default 3). |
+| `MCP_TESTER_MAX_RESPONSE_BYTES` | both | Size at which a server's response is cut, 1024 to 67108864 (default 8388608, 8 MB). |
+| `ALLOWED_ORIGINS` | both | **Deprecated**: hostnames, matched on any scheme or port. Still honoured, with a warning, when `MCP_TESTER_ALLOWED_TARGETS` is unset. |
 | `PORT`, `HOST` | local | Defaults `8787`, `127.0.0.1`. |
 | `MCP_TESTER_ALLOWED_HOSTS` | local | Extra `Host` header values to accept when serving under a hostname. |
 
-Request timeout and retries are set in the UI. Retries default to 0, so real failures stay visible.
+Every setting is validated: the local server refuses to start and names the bad variable, and the Worker answers `/proxy` with a JSON 500 naming it. On start, the local server prints what it binds to, the allowed targets and the limits. `mcp-tester --help` lists the settings.
+
+Request timeout and retries are set in the UI. Retries default to 0, so real failures stay visible, and apply only to requests that read (lists, `resources/read`, `prompts/get`, `ping`, discovery): a `tools/call` is never sent twice. A running call has a Cancel button: it frees the UI at once, stops the proxy's request to the server, and sends the server `notifications/cancelled`. On Cloudflare, the Worker can only notice that the browser went away with the `enable_request_signal` compatibility flag: `wrangler.toml` sets it; in the dashboard, add it under the Worker's Settings, Compatibility flags.
 
 ---
 
@@ -230,14 +236,14 @@ Report vulnerabilities privately through GitHub, as [`SECURITY.md`](SECURITY.md)
 
 - **The local server is not an open proxy.** It binds to loopback. It rejects unknown `Host` headers, which blocks DNS rebinding, and it rejects `/proxy` calls from other origins. It also requires `Content-Type: application/json`, so no other web page you visit can use it to reach internal systems.
 - **The Cloudflare Worker is public.** Other web pages can't drive it: since 0.10.0, `/proxy` rejects foreign origins and sends no CORS grants. But anyone with its URL can still open it. Before using it with credentials:
-  - Set `ALLOWED_ORIGINS` to your MCP server and authorization server hosts.
+  - Set `MCP_TESTER_ALLOWED_TARGETS` to your MCP server and authorization server origins.
   - Put Cloudflare Access in front of it.
   - Add a bypass for `/oauth/client-metadata.json`, so authorization servers can fetch the client metadata document.
 - **Credentials stay in memory.** Auth keeps tokens and secrets in memory only and redacts them from the Log. The one exception is the pop-up fallback's in-flight request, kept in `sessionStorage` until the page returns.
 - **Saved headers are stored in the browser.** The Headers dialog saves its values in `localStorage`. Use Auth for tokens and keys.
 - **A Content-Security-Policy on the page**, from both hosts: it may only talk to its own origin (`connect-src 'self'`), so an injected script could not send tokens elsewhere, and it cannot be framed. The one external origin allowed is Google Fonts, for the stylesheet's fonts.
 - **OAuth checks are enforced, not just reported:** issuer mismatch, the `iss` in the authorization response, `state`, and PKCE S256 support.
-**Resource limits.** Every proxied request has a timeout, clamped to 500 ms to 120 s (default 15 s), and at most 3 retries (default 0). The local server rejects a request body over 1 MB with 413. Diagnostics keep the latest 500 samples and the Log the latest 1000 entries, so a monitor left running for days stays bounded.
+**Resource limits.** Every proxied request has a timeout, clamped to 500 ms to 120 s (default 15 s), and at most 3 retries (default 0, read-only requests only). A server's response is read up to 8 MB and cut there. The local server rejects a request body over 1 MB with 413. Diagnostics keep the latest 500 samples and the Log the latest 1000 entries, so a monitor left running for days stays bounded.
 
 **Testing and fuzzing.** The security invariants above are regression-tested: both hosts' origin checks and the local server's host and content-type checks in the hosts suite, the OAuth `iss` mix-up and PKCE end to end against the mock authorization server, and the https-only authorization endpoint in the UI-logic suite. There are no fuzz targets yet; the parsers most worth fuzzing are the SSE and JSON response handling.
 

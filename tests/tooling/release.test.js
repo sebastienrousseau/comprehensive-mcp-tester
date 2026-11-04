@@ -42,3 +42,22 @@ test('AC-REL-V001-02: published release reads back', () => {
   assert.match(preflight, /"MCP Tester v\$VERSION"/, 'the tag message is checked');
   assert.match(preflight, /git merge-base --is-ancestor "\$COMMIT" origin\/main/, 'the tag must point at main');
 });
+
+test('attestations are skipped for pull requests from forks, which get no OIDC token', () => {
+  const workflow = read('.github/workflows/release.yml');
+  const guard = "if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository";
+  for (const step of ['Build provenance', 'SBOM attestation', 'Ship the provenance bundle with the release']) {
+    const body = workflow.split('- name: ' + step)[1];
+    assert.ok(body, 'the workflow has a step named ' + step);
+    assert.ok(body.split('- name:')[0].includes(guard), step + ' is not guarded for fork pull requests');
+  }
+  const publish = workflow.split('- name: Publish the release')[1].split('- name:')[0];
+  assert.match(publish, /if: env\.DRY_RUN == 'false'/, 'publishing stays a real-release step');
+});
+
+test('a dry run composes the notes around a stand-in when generate-notes is refused', () => {
+  const step = read('.github/workflows/release.yml').split('- name: Release notes')[1].split('- uses:')[0];
+  assert.match(step, /if ! gh api "repos\/\$REPO\/releases\/generate-notes"/, 'the API call is guarded');
+  assert.match(step, /\[ "\$DRY_RUN" = true \] \|\| exit 1/, 'a real release still fails when the API does');
+  assert.match(step, /\*\*Full Changelog\*\*: https:\/\/github\.com\/%s\/commits\/%s/, 'the stand-in carries the Full Changelog line the composer requires');
+});
